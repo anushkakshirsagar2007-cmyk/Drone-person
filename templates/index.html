@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drone-Assisted Lost Person Detection</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Drone-Assisted Lost Person Detection System</h1>
+        <form action="/" method="post" enctype="multipart/form-data">
+            <div>
+                <label for="reference_image">Upload Reference Image:</label>
+                <input type="file" name="reference_image" id="reference_image" required>
+            </div>
+            <div>
+                <label for="video">Upload Surveillance Video:</label>
+                <input type="file" name="video" id="video" required>
+            </div>
+            <input type="submit" value="Process Video">
+        </form>
+    </div>
+
+    <div class="loader-overlay" id="loader">
+        <div class="loader"></div>
+    </div>
+
+    <script>
+        document.querySelector('form').addEventListener('submit', function() {
+            document.getElementById('loader').style.display = 'flex';
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Processing Results</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Processing Results</h1>
+        <div id="error-container" class="error-message" style="display: none;">
+            <h2>An Error Occurred</h2>
+            <p id="error-text"></p>
+        </div>
+
+        <div id="progress-container">
+            <h2>Processing Video...</h2>
+            <div class="progress-bar">
+                <div class="progress-bar-fill" id="progress-bar-fill"></div>
+            </div>
+            <p id="progress-text">0%</p>
+            <img id="thumbnail" src="" alt="Processing frame..." style="max-width: 100%; margin-top: 1rem; border-radius: 5px;"/>
+        </div>
+
+        <div id="results-container" class="results-container" style="display: none;">
+            <h2>Processed Video</h2>
+            <video id="result-video" width="640" height="480" controls autoplay loop>
+                <source id="result-video-source" src="" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+        </div>
+        <div id="explanation-container" class="explanation" style="display: none;">
+            <h2>Explainable AI Output</h2>
+            <p id="explanation-text"></p>
+        </div>
+        <a href="/" id="new-video-link" style="display: none;">Process Another Video</a>
+    </div>
+
+    <script>
+        const source = new EventSource("/progress");
+        source.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+
+            if (data.error) {
+                document.getElementById('progress-container').style.display = 'none';
+                const errorContainer = document.getElementById('error-container');
+                const errorText = document.getElementById('error-text');
+                errorText.innerText = data.error;
+                errorContainer.style.display = 'block';
+                source.close();
+                return;
+            }
+
+            const progressBarFill = document.getElementById('progress-bar-fill');
+            const progressText = document.getElementById('progress-text');
+            const thumbnail = document.getElementById('thumbnail');
+
+            progressBarFill.style.width = data.progress + '%';
+            progressText.innerText = data.progress + '%';
+
+            if (data.thumbnail) {
+                thumbnail.src = 'data:image/jpeg;base64,' + data.thumbnail;
+            }
+
+            if (data.progress === 100) {
+                document.getElementById('progress-container').style.display = 'none';
+                document.getElementById('results-container').style.display = 'block';
+                document.getElementById('explanation-container').style.display = 'block';
+                document.getElementById('new-video-link').style.display = 'inline-block';
+
+                const videoSource = document.getElementById('result-video-source');
+                const videoPlayer = document.getElementById('result-video');
+                videoSource.src = "{{ url_for('static', filename='') }}" + data.video_path;
+                videoPlayer.load();
+
+                document.getElementById('explanation-text').innerText = data.explanation;
+
+                source.close();
+            }
+        };
+    </script>
+</body>
+</html>
