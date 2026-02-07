@@ -1,6 +1,5 @@
 Flask
 opencv-python
-dlib
 face_recognition
 scipy
 scikit-learn

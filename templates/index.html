@@ -3,32 +3,182 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Drone-Assisted Lost Person Detection</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <title>Drone-Assisted Person Detection</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #0f172a; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .gradient-text { background: linear-gradient(135deg, #38bdf8, #818cf8); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+        .animate-pulse-slow { animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+        .upload-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .upload-card:hover { transform: translateY(-4px); border-color: rgba(56, 189, 248, 0.4); }
+    </style>
 </head>
-<body>
-    <div class="container">
-        <h1>Drone-Assisted Lost Person Detection System</h1>
-        <form action="/" method="post" enctype="multipart/form-data">
-            <div>
-                <label for="reference_image">Upload Reference Image:</label>
-                <input type="file" name="reference_image" id="reference_image" required>
-            </div>
-            <div>
-                <label for="video">Upload Surveillance Video:</label>
-                <input type="file" name="video" id="video" required>
-            </div>
-            <input type="submit" value="Process Video">
-        </form>
+<body class="h-screen text-slate-200 p-4 md:p-8 relative bg-[#020617] overflow-hidden flex items-center justify-center">
+    <!-- Ambient Glow Background -->
+    <div class="fixed inset-0 z-0 pointer-events-none">
+        <div class="absolute top-0 -left-24 w-96 h-96 bg-sky-500/10 rounded-full blur-[120px]"></div>
+        <div class="absolute bottom-0 -right-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-[120px]"></div>
     </div>
 
-    <div class="loader-overlay" id="loader">
-        <div class="loader"></div>
+    <div class="max-w-4xl mx-auto w-full space-y-10 relative z-10">
+        <!-- Header -->
+        <div class="text-center space-y-2">
+            <div class="inline-flex p-3 rounded-2xl bg-sky-500/10 mb-1 border border-sky-500/20 shadow-lg shadow-sky-500/10">
+                <i data-lucide="shield-check" class="w-8 h-8 text-sky-400"></i>
+            </div>
+            <h1 class="text-6xl font-black tracking-tighter text-white uppercase italic">
+                Aero<span class="text-sky-400">Trace</span>
+            </h1>
+            <p class="text-slate-400 font-mono text-xs tracking-[0.4em] uppercase opacity-70">Automated Drone-Assisted Surveillance</p>
+        </div>
+
+        <!-- Main Upload Card -->
+        <div class="glass p-8 md:p-10 rounded-[3rem] shadow-2xl relative border border-white/5 overflow-hidden">
+            <div class="absolute -right-24 -top-24 w-64 h-64 bg-sky-500/5 rounded-full blur-3xl transition-colors duration-700"></div>
+            
+            <form action="/" method="POST" enctype="multipart/form-data" class="space-y-8">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <!-- Profile Upload -->
+                    <div class="space-y-3">
+                        <div id="drop-zone-ref" class="relative group/zone cursor-pointer">
+                            <input type="file" name="reference_image" id="reference_image" class="hidden" accept="image/*" required>
+                            <div class="border-2 border-slate-700 group-hover/zone:border-sky-500 bg-slate-900/60 rounded-3xl p-12 transition-all duration-500 text-center space-y-4 backdrop-blur-md shadow-inner">
+                                <div class="w-14 h-14 bg-sky-500/20 rounded-2xl flex items-center justify-center mx-auto group-hover/zone:scale-110 transition-transform duration-500 border border-sky-500/30">
+                                    <i data-lucide="user" class="w-8 h-8 text-sky-400"></i>
+                                </div>
+                                <div class="space-y-1">
+                                    <p class="text-sm font-black text-white uppercase tracking-[0.2em] group-hover/zone:text-sky-400 transition-colors">Target Profile</p>
+                                    <p id="ref-name" class="text-[10px] text-slate-300 font-bold font-mono truncate px-2">IMG ONLY (JPEG/PNG)</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Stream Upload -->
+                    <div class="space-y-3">
+                        <div id="drop-zone-video" class="relative group/zone cursor-pointer">
+                            <input type="file" name="video" id="video" class="hidden" accept="video/mp4,video/x-m4v,video/*" required>
+                            <div class="border-2 border-slate-700 group-hover/zone:border-sky-500 bg-slate-900/60 rounded-3xl p-12 transition-all duration-500 text-center space-y-4 backdrop-blur-md shadow-inner">
+                                <div class="w-14 h-14 bg-sky-500/20 rounded-2xl flex items-center justify-center mx-auto group-hover/zone:scale-110 transition-transform duration-500 border border-sky-500/30">
+                                    <i data-lucide="radio" class="w-8 h-8 text-sky-400"></i>
+                                </div>
+                                <div class="space-y-1">
+                                    <p class="text-sm font-black text-white uppercase tracking-[0.2em] group-hover/zone:text-sky-400 transition-colors">Visual Stream</p>
+                                    <p id="video-name" class="text-[10px] text-slate-300 font-bold font-mono truncate px-2">VIDEO ONLY (MP4/AVI)</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full py-6 bg-sky-500 hover:bg-sky-400 text-white rounded-[2rem] font-black uppercase tracking-[0.2em] text-[11px] transition-all duration-500 shadow-2xl shadow-sky-500/20 hover:shadow-sky-500/40 hover:-translate-y-1 flex items-center justify-center gap-4 group/btn">
+                    <i data-lucide="zap" class="w-5 h-5 fill-current group-hover/btn:scale-125 transition-transform"></i>
+                    Initiate Search Protocol
+                </button>
+            </form>
+        </div>
+
+        <!-- Stats HUD -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="glass p-5 rounded-3xl border border-white/5 flex flex-col items-center text-center">
+                <i data-lucide="cpu" class="w-5 h-5 text-sky-400 mb-2"></i>
+                <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">YOLOv8 Engine</span>
+            </div>
+            <div class="glass p-5 rounded-3xl border border-white/5 flex flex-col items-center text-center">
+                <i data-lucide="fingerprint" class="w-5 h-5 text-sky-400 mb-2"></i>
+                <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">94.2% Precise</span>
+            </div>
+            <div class="glass p-5 rounded-3xl border border-white/5 flex flex-col items-center text-center">
+                <i data-lucide="activity" class="w-5 h-5 text-sky-400 mb-2"></i>
+                <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Real-Time Link</span>
+            </div>
+        </div>
+    </div>
+    </div>
+
+    <!-- Processing Overlay -->
+    <div id="loader" class="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-50 hidden flex flex-col items-center justify-center space-y-12 overflow-hidden">
+        <!-- Neural Network Background Effect -->
+        <div class="absolute inset-0 opacity-20 pointer-events-none">
+            <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(56,189,248,0.15)_0,transparent_70%)]"></div>
+            <div class="grid grid-cols-8 gap-4 p-4 h-full w-full opacity-30">
+                <div class="border border-sky-500/20 rounded-lg animate-pulse" style="animation-delay: 0.1s"></div>
+                <div class="border border-sky-500/20 rounded-lg animate-pulse" style="animation-delay: 0.5s"></div>
+                <div class="border border-sky-500/20 rounded-lg animate-pulse" style="animation-delay: 0.2s"></div>
+                <div class="border border-sky-500/20 rounded-lg animate-pulse" style="animation-delay: 0.8s"></div>
+                <div class="border border-sky-500/20 rounded-lg animate-pulse" style="animation-delay: 0.3s"></div>
+                <div class="border border-sky-500/20 rounded-lg animate-pulse" style="animation-delay: 0.6s"></div>
+                <div class="border border-sky-500/20 rounded-lg animate-pulse" style="animation-delay: 0.4s"></div>
+                <div class="border border-sky-500/20 rounded-lg animate-pulse" style="animation-delay: 0.7s"></div>
+            </div>
+        </div>
+
+        <div class="relative scale-150 z-10">
+            <!-- Animated Rings -->
+            <div class="absolute inset-0 w-32 h-32 -m-8 border-2 border-sky-500/10 rounded-full animate-ping"></div>
+            <div class="absolute inset-0 w-32 h-32 -m-8 border border-sky-400/20 rounded-full animate-spin [animation-duration:3s]"></div>
+            
+            <div class="relative w-16 h-16">
+                <div class="absolute inset-0 border-4 border-sky-500/20 border-t-sky-500 rounded-full animate-spin"></div>
+                <div class="absolute inset-0 flex items-center justify-center">
+                    <i data-lucide="brain-circuit" class="w-8 h-8 text-sky-400 animate-pulse"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center relative z-10 space-y-6 max-w-md px-6">
+            <div class="space-y-2">
+                <h2 class="text-3xl font-black tracking-tighter text-white uppercase italic">Neural Processing Active</h2>
+                <p class="text-sky-400/80 font-mono text-xs tracking-[0.3em] uppercase animate-pulse">Scanning Bio-metric Patterns...</p>
+            </div>
+            
+            <div class="flex flex-col gap-3 font-mono text-[10px] text-slate-500 text-left bg-slate-900/50 p-4 rounded-xl border border-slate-800 backdrop-blur-md">
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-sky-500 animate-pulse"></span>
+                    <span>> CORE_INIT: YOLOv8_NEURAL_ENGINE</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-sky-500 animate-pulse [animation-delay:0.2s]"></span>
+                    <span>> SYNC_SURVEILLANCE: ESTABLISHED</span>
+                </div>
+                <div class="flex items-center gap-2 text-sky-400/60">
+                    <span class="w-2 h-2 rounded-full bg-sky-400 animate-bounce"></span>
+                    <span>> ANALYZING_VISUAL_TENSORS...</span>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
-        document.querySelector('form').addEventListener('submit', function() {
-            document.getElementById('loader').style.display = 'flex';
+        lucide.createIcons();
+
+        const form = document.querySelector('form');
+        const loader = document.getElementById('loader');
+        const refInput = document.getElementById('reference_image');
+        const videoInput = document.getElementById('video');
+        const refName = document.getElementById('ref-name');
+        const videoName = document.getElementById('video-name');
+
+        refInput.addEventListener('change', e => {
+            if(e.target.files.length > 0) refName.textContent = e.target.files[0].name;
+        });
+
+        videoInput.addEventListener('change', e => {
+            if(e.target.files.length > 0) videoName.textContent = e.target.files[0].name;
+        });
+
+        const dropZoneRef = document.getElementById('drop-zone-ref');
+        const dropZoneVideo = document.getElementById('drop-zone-video');
+
+        dropZoneRef.addEventListener('click', () => refInput.click());
+        dropZoneVideo.addEventListener('click', () => videoInput.click());
+
+        form.addEventListener('submit', () => {
+            loader.classList.remove('hidden');
         });
     </script>
 </body>

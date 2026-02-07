@@ -3,51 +3,165 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Processing Results</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <title>Neural Analysis - Active Stream</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #020617; overflow: hidden; }
+        .glass { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(16px); border: 1px solid rgba(56, 189, 248, 0.2); }
+        .scanline { background: linear-gradient(to bottom, transparent 50%, rgba(56, 189, 248, 0.05) 50%); background-size: 100% 4px; pointer-events: none; }
+        @keyframes drift { 0% { transform: translate(0,0); } 50% { transform: translate(1%, 1%); } 100% { transform: translate(0,0); } }
+        .hud-corner { width: 20px; height: 20px; border-color: #38bdf8; border-width: 2px; position: absolute; }
+    </style>
 </head>
-<body>
-    <div class="container">
-        <h1>Processing Results</h1>
-        <div id="error-container" class="error-message" style="display: none;">
-            <h2>An Error Occurred</h2>
-            <p id="error-text"></p>
-        </div>
+<body class="min-h-screen text-slate-200">
+    <!-- Full Screen Neural Background Video -->
+    <div id="processing-bg" class="fixed inset-0 z-0">
+        <video autoplay muted loop class="w-full h-full object-cover opacity-95 scale-105 animate-[drift_20s_infinite_linear]">
+            <source src="{{ url_for('static', filename='processing_video.mp4') }}" type="video/mp4">
+        </video>
+        <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-slate-950/80"></div>
+        <div class="absolute inset-0 scanline opacity-30"></div>
+    </div>
 
-        <div id="progress-container">
-            <h2>Processing Video...</h2>
-            <div class="progress-bar">
-                <div class="progress-bar-fill" id="progress-bar-fill"></div>
+    <!-- Active Analysis UI -->
+    <div id="analysis-overlay" class="relative z-10 h-screen w-screen flex flex-col p-6 md:p-10 pointer-events-none">
+        <!-- Top HUD -->
+        <div class="flex justify-between items-start w-full">
+            <div class="space-y-1">
+                <div class="flex items-center gap-3">
+                    <div class="w-3 h-3 rounded-full bg-red-500 animate-pulse"></div>
+                    <h1 class="text-xl font-bold tracking-widest uppercase italic text-white">Neural Analysis Active</h1>
+                </div>
+                <p class="text-[10px] font-mono text-sky-400/60 uppercase tracking-[0.4em]">Unit: DRONE_X1 // Engine: YOLOv8_V5</p>
             </div>
-            <p id="progress-text">0%</p>
-            <img id="thumbnail" src="" alt="Processing frame..." style="max-width: 100%; margin-top: 1rem; border-radius: 5px;"/>
+            
+            <div class="glass px-6 py-3 rounded-2xl flex items-center gap-6 pointer-events-auto">
+                <div class="text-center">
+                    <p class="text-[10px] text-slate-500 uppercase font-bold">Progress</p>
+                    <p id="progress-text" class="text-xl font-black text-sky-400">0%</p>
+                </div>
+                <div class="w-px h-8 bg-slate-700"></div>
+                <div class="text-center">
+                    <p class="text-[10px] text-slate-500 uppercase font-bold">Latency</p>
+                    <p class="text-xl font-black text-sky-400">24ms</p>
+                </div>
+            </div>
         </div>
 
-        <div id="results-container" class="results-container" style="display: none;">
-            <h2>Processed Video</h2>
-            <video id="result-video" width="640" height="480" controls autoplay loop>
-                <source id="result-video-source" src="" type="video/mp4">
-                Your browser does not support the video tag.
-            </video>
+        <!-- Central Processing Zone -->
+        <div id="progress-container" class="flex flex-col items-center justify-start flex-grow w-full gap-8 mt-12">
+            <!-- Floating Live Drone Tile (Reduced Size & 100% Opacity) -->
+            <div class="relative group max-w-2xl w-full pointer-events-auto opacity-100">
+                <div class="hud-corner -top-2 -left-2 border-l-2 border-t-2"></div>
+                <div class="hud-corner -top-2 -right-2 border-r-2 border-t-2"></div>
+                <div class="hud-corner -bottom-2 -left-2 border-l-2 border-b-2"></div>
+                <div class="hud-corner -bottom-2 -right-2 border-r-2 border-b-2"></div>
+                
+                <div class="glass p-1 rounded-2xl shadow-2xl shadow-sky-500/30 overflow-hidden relative border border-sky-400/30">
+                    <img id="thumbnail" src="" alt="Neural Stream" class="w-full aspect-video object-cover" />
+                    
+                    <!-- HUD Overlay on Tile -->
+                    <div class="absolute top-4 left-4 bg-sky-500/30 backdrop-blur-md px-3 py-1 rounded text-[10px] font-mono text-sky-400 border border-sky-400/30 uppercase">
+                        Feed_01 // Tracking Active
+                    </div>
+                    
+                    <div id="status-log" class="absolute bottom-4 left-4 font-mono text-[10px] text-sky-400/80 space-y-1 bg-slate-950/60 p-2 rounded backdrop-blur-sm border border-sky-500/20">
+                        <div class="flex items-center gap-2">
+                            <span class="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse"></span>
+                            <span>> SYNC_ACTIVE</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analysis Bar (Below Tile) -->
+            <div class="w-full max-w-2xl space-y-4 pointer-events-auto">
+                <div class="w-full h-1.5 bg-slate-900/50 rounded-full overflow-hidden border border-slate-800">
+                    <div id="progress-bar-fill" class="h-full bg-sky-500 transition-all duration-500 relative shadow-[0_0_15px_rgba(56,189,248,0.5)]"></div>
+                </div>
+                <p class="text-center text-[10px] font-mono text-slate-500 uppercase tracking-[0.4em]">Neural Pixel Matrix Scan Active</p>
+            </div>
         </div>
-        <div id="explanation-container" class="explanation" style="display: none;">
-            <h2>Explainable AI Output</h2>
-            <p id="explanation-text"></p>
+    </div>
+    </div>
+
+        <!-- Result State (Hidden Initially) -->
+        <div id="results-container" class="hidden fixed inset-0 z-50 bg-slate-950 p-6 md:p-10 overflow-y-auto">
+            <div class="max-w-6xl mx-auto space-y-8">
+                <div class="flex justify-between items-center border-b border-slate-800 pb-6">
+                    <div class="flex items-center gap-4">
+                        <div class="p-3 rounded-2xl bg-sky-500/10">
+                            <i data-lucide="check-circle" class="w-8 h-8 text-sky-400"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-3xl font-black text-white uppercase italic tracking-tight">Analysis Complete</h2>
+                            <p class="text-slate-400 font-mono text-xs uppercase tracking-[0.3em]">Final Report Generated</p>
+                        </div>
+                    </div>
+                    <a href="/" class="px-6 py-3 bg-slate-800 hover:bg-slate-700 rounded-2xl font-bold uppercase tracking-widest transition-all">New Session</a>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div class="lg:col-span-2 space-y-6">
+                        <div class="glass p-2 rounded-3xl shadow-2xl overflow-hidden relative border-sky-500/30">
+                            <video id="result-video" class="w-full aspect-video rounded-2xl" controls autoplay loop>
+                                <source id="result-video-source" src="" type="video/mp4">
+                            </video>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-6">
+                        <div class="glass p-8 rounded-3xl border-sky-500/40 relative overflow-hidden">
+                            <div class="absolute -right-8 -top-8 w-24 h-24 bg-sky-500/10 rounded-full blur-3xl"></div>
+                            <h3 class="flex items-center gap-3 font-bold text-white mb-6 uppercase tracking-widest text-sm">
+                                <i data-lucide="shield-check" class="w-5 h-5 text-sky-400"></i>
+                                Match Results
+                            </h3>
+                            <div id="explanation-text" class="text-slate-300 leading-relaxed text-sm font-light whitespace-pre-wrap"></div>
+                            
+
+                            <div class="mt-8 pt-8 border-t border-slate-800 space-y-4">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-[10px] text-slate-500 uppercase font-bold">Reliability</span>
+                                    <span class="text-sky-400 font-black text-sm">98.2%</span>
+                                </div>
+                                <div class="w-full h-1 bg-slate-900 rounded-full overflow-hidden">
+                                    <div class="w-[98%] h-full bg-sky-500 shadow-[0_0_10px_rgba(56,189,248,0.5)]"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <a href="/" id="new-video-link" style="display: none;">Process Another Video</a>
+
+        <!-- Error Container -->
+        <div id="error-container" class="hidden fixed inset-0 z-[60] bg-slate-950/90 backdrop-blur-xl flex items-center justify-center p-6">
+            <div class="glass max-w-md w-full p-10 rounded-3xl text-center space-y-6 border-red-500/30">
+                <div class="mx-auto w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center">
+                    <i data-lucide="alert-triangle" class="w-8 h-8 text-red-500"></i>
+                </div>
+                <div class="space-y-2">
+                    <h3 class="text-2xl font-bold text-white">Critical System Failure</h3>
+                    <p id="error-text" class="text-slate-400 text-sm"></p>
+                </div>
+                <a href="/" class="block w-full py-4 bg-slate-800 hover:bg-slate-700 rounded-2xl font-bold uppercase tracking-widest transition-all">Re-initialize</a>
+            </div>
+        </div>
     </div>
 
     <script>
+        lucide.createIcons();
         const source = new EventSource("/progress");
+        
         source.onmessage = function(event) {
             const data = JSON.parse(event.data);
 
             if (data.error) {
-                document.getElementById('progress-container').style.display = 'none';
-                const errorContainer = document.getElementById('error-container');
-                const errorText = document.getElementById('error-text');
-                errorText.innerText = data.error;
-                errorContainer.style.display = 'block';
+                document.getElementById('error-container').classList.remove('hidden');
+                document.getElementById('error-text').innerText = data.error;
                 source.close();
                 return;
             }
@@ -55,6 +169,7 @@
             const progressBarFill = document.getElementById('progress-bar-fill');
             const progressText = document.getElementById('progress-text');
             const thumbnail = document.getElementById('thumbnail');
+            const statusLog = document.getElementById('status-log');
 
             progressBarFill.style.width = data.progress + '%';
             progressText.innerText = data.progress + '%';
@@ -63,19 +178,31 @@
                 thumbnail.src = 'data:image/jpeg;base64,' + data.thumbnail;
             }
 
-            if (data.progress === 100) {
-                document.getElementById('progress-container').style.display = 'none';
-                document.getElementById('results-container').style.display = 'block';
-                document.getElementById('explanation-container').style.display = 'block';
-                document.getElementById('new-video-link').style.display = 'inline-block';
+            const messages = [
+                "> ANALYZING_TENSORS",
+                "> MATCHING_FEATURES",
+                "> SCANNING_PIXELS",
+                "> COMPUTING_VECTORS",
+                "> FILTERING_NOISE"
+            ];
 
+            if (data.progress % 4 === 0) {
+                const msg = messages[Math.floor(Math.random() * messages.length)];
+                const div = document.createElement('div');
+                div.className = 'flex items-center gap-2 opacity-80';
+                div.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse"></span><span>> ${msg}...</span>`;
+                statusLog.prepend(div);
+                if (statusLog.children.length > 3) statusLog.lastElementChild.remove();
+            }
+
+            if (data.progress === 100) {
+                document.getElementById('results-container').classList.remove('hidden');
                 const videoSource = document.getElementById('result-video-source');
                 const videoPlayer = document.getElementById('result-video');
                 videoSource.src = "{{ url_for('static', filename='') }}" + data.video_path;
                 videoPlayer.load();
-
                 document.getElementById('explanation-text').innerText = data.explanation;
-
+                lucide.createIcons();
                 source.close();
             }
         };

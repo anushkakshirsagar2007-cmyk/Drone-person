@@ -168,10 +168,15 @@ def process_video(video_path, reference_image_path, progress_queue):
 
     if final_decision_id is not None:
         scores = engine.get_latest_scores(final_decision_id)
+        # Ensure scores are not None and provide safe formatting
+        face_score = "Yes" if scores[0] else "No"
+        color_score = f"{scores[1]:.2f}" if scores[1] is not None else "N/A"
+        texture_score = f"{scores[2]:.2f}" if scores[2] is not None else "N/A"
+        
         explanation = (
             f"Match Confirmed: The lost person is identified as ID {final_decision_id}.\n"
             f"Decision was made based on consistent high similarity scores over {engine.consecutive_frames} consecutive frames.\n"
-            f"Final Scores - Face Match: {scores[0]}, Clothing Color Similarity: {scores[1]:.2f}, Clothing Texture Similarity: {scores[2]:.2f}."
+            f"Final Scores - Face Match: {face_score}, Clothing Color Similarity: {color_score}, Clothing Texture Similarity: {texture_score}."
         )
     else:
         explanation = "No definitive match found. While some individuals showed partial similarities, none met all the required criteria for a confident match."
