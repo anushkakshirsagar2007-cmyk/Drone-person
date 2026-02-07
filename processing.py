@@ -3,7 +3,6 @@ import numpy as np
 import os
 import tempfile
 import shutil
-from ultralytics import YOLO
 from tracker import CentroidTracker
 import similarity
 import face_recognition
@@ -11,13 +10,19 @@ from decision_engine import DecisionEngine
 
 import base64
 
+from ultralytics import YOLO
+
 def process_video(video_path, reference_image_path, progress_queue):
     print("--- Starting video processing ---")
     print("Loading YOLOv8 model...")
-    model = YOLO("yolov8n.pt") # Using the nano version for speed
+    # Load YOLOv8 model (yolov8n is fast, yolov8m/l are more accurate)
+    model = YOLO("yolov8n.pt") 
     print("YOLOv8 model loaded.")
     ct = CentroidTracker()
     engine = DecisionEngine()
+    classes = []
+    with open("yolo/coco.names", "r") as f:
+        classes = [line.strip() for line in f.readlines()]
     reference_image = face_recognition.load_image_file(reference_image_path)
     reference_cv2_image = cv2.imread(reference_image_path)
     # Resize image to speed up color analysis
@@ -25,6 +30,8 @@ def process_video(video_path, reference_image_path, progress_queue):
     print("Analyzing reference image colors...")
     reference_color = similarity.get_dominant_color(resized_ref_image)
     print("Reference image analysis complete.")
+    # layer_names and output_layers are obsolete for YOLOv8
+    # output_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers()]
 
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -66,17 +73,16 @@ def process_video(video_path, reference_image_path, progress_queue):
             # Resize frame for faster processing
             frame = cv2.resize(frame, (800, int(frame.shape[0] * 800 / frame.shape[1])))
 
-            results = model(frame, stream=True)
+            # YOLOv8 Detection
+            results = model(frame, classes=[0], verbose=False) # 0 is 'person' in COCO
+            
             rects = []
-
-            for r in results:
-                boxes = r.boxes
+            for result in results:
+                boxes = result.boxes
                 for box in boxes:
-                    # Check if the detected object is a person (class 0 in COCO dataset)
-                    if box.cls[0] == 0 and box.conf[0] > 0.5:
-                        x1, y1, x2, y2 = box.xyxy[0]
-                        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-                        rects.append((x1, y1, x2, y2))
+                    # Get coordinates
+                    x1, y1, x2, y2 = box.xyxy[0]
+                    rects.append((int(x1), int(y1), int(x2), int(y2)))
 
             objects = ct.update(rects)
             frame_match_id = None

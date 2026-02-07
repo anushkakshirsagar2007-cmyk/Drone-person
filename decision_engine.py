@@ -1,5 +1,5 @@
 class DecisionEngine:
-    def __init__(self, face_threshold=0.6, color_threshold=80, texture_threshold=0.7, consecutive_frames=7):
+    def __init__(self, face_threshold=0.6, color_threshold=70, texture_threshold=0.75, consecutive_frames=10):
         self.face_threshold = face_threshold
         self.color_threshold = color_threshold
         self.texture_threshold = texture_threshold

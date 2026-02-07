@@ -5,6 +5,3 @@ face_recognition
 scipy
 scikit-learn
 scikit-image
-ultralytics
-torch
-torchvision
