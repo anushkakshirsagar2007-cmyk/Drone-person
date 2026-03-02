@@ -1,36 +1,59 @@
 class DecisionEngine:
-    def __init__(self, face_threshold=0.6, color_threshold=70, texture_threshold=0.75, consecutive_frames=10):
+    def __init__(self, face_threshold=0.65, color_threshold=80, texture_threshold=0.7, consecutive_frames=5):
+        # face_threshold: 0.65 is stricter for VGG-Face cosine similarity
+        # color_threshold: 80 is tight to prevent incorrect matches
+        # texture_threshold: 0.7 is selective for high-confidence matching
         self.face_threshold = face_threshold
         self.color_threshold = color_threshold
         self.texture_threshold = texture_threshold
         self.consecutive_frames = consecutive_frames
         self.tracked_persons = {}
 
-    def update(self, objectID, face_match, color_sim, texture_sim):
+    def update(self, objectID, face_sim, color_sim, texture_sim):
         if objectID not in self.tracked_persons:
             self.tracked_persons[objectID] = {
-                'face_matches': [],
+                'face_sims': [],
                 'color_sims': [],
                 'texture_sims': [],
                 'consecutive_matches': 0
             }
         
-        self.tracked_persons[objectID]['face_matches'].append(face_match)
+        self.tracked_persons[objectID]['face_sims'].append(face_sim)
         self.tracked_persons[objectID]['color_sims'].append(color_sim)
         self.tracked_persons[objectID]['texture_sims'].append(texture_sim)
-        self.tracked_persons[objectID]['latest_scores'] = (face_match, color_sim, texture_sim)
+        self.tracked_persons[objectID]['latest_scores'] = (face_sim, color_sim, texture_sim)
 
-        if face_match and color_sim < self.color_threshold and texture_sim > self.texture_threshold:
+        # STRICT Multi-factor fusion logic:
+        is_match = False
+        # Require a solid face match (>0.6) AND at least one clothing factor to be very good
+        if face_sim > self.face_threshold:
+            if color_sim < self.color_threshold or texture_sim > self.texture_threshold:
+                is_match = True
+        # Borderline face (0.55-0.65) requires both clothing factors to be excellent
+        elif face_sim > 0.55:
+            if color_sim < (self.color_threshold * 0.7) and texture_sim > (self.texture_threshold * 1.2):
+                is_match = True
+
+        if is_match:
             self.tracked_persons[objectID]['consecutive_matches'] += 1
         else:
             self.tracked_persons[objectID]['consecutive_matches'] = 0
 
     def get_decision(self, objectID):
         if objectID in self.tracked_persons:
+            # Require sustained consecutive evidence
             if self.tracked_persons[objectID]['consecutive_matches'] >= self.consecutive_frames:
                 return "Match Confirmed"
-            elif len(self.tracked_persons[objectID]['face_matches']) > self.consecutive_frames:
-                return "Match Rejected"
+            
+            # High-confidence total match fallback
+            total_strong_matches = sum(1 for sim in self.tracked_persons[objectID]['face_sims'] if sim > 0.7)
+            if total_strong_matches >= self.consecutive_frames:
+                return "Match Confirmed"
+
+            elif len(self.tracked_persons[objectID]['face_sims']) > (self.consecutive_frames * 3):
+                avg_face = sum(self.tracked_persons[objectID]['face_sims'][-10:]) / 10
+                if avg_face < 0.4:
+                    return "Match Rejected"
         return "Uncertain"
 
     def get_latest_scores(self, objectID):

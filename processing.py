@@ -57,6 +57,8 @@ def process_video(video_path, reference_image_path, progress_queue):
     out = cv2.VideoWriter(temp_filename, fourcc, 20.0, (output_width, output_height))
 
     frame_count = 0
+    # Process every 6th frame for a balance of speed and multi-stage verification
+    skip_frames = 6 
     try:
         while cap.isOpened():
             ret, frame = cap.read()
@@ -64,10 +66,11 @@ def process_video(video_path, reference_image_path, progress_queue):
                 break
 
             frame_count += 1
-            if frame_count % 2 != 0:
-                # Still send progress on skipped frames to make the bar smoother
-                progress = int((frame_count / total_frames) * 100)
-                progress_queue.put({'progress': progress})
+            if frame_count % skip_frames != 0:
+                # Update progress even on skipped frames
+                if frame_count % 10 == 0:
+                    progress = int((frame_count / total_frames) * 100)
+                    progress_queue.put({'progress': progress})
                 continue
 
             # Resize frame for faster processing
@@ -99,11 +102,12 @@ def process_video(video_path, reference_image_path, progress_queue):
                         cropped_image = frame[startY:endY, startX:endX]
                         if cropped_image.size > 0:
                             rgb_cropped_image = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB)
-                            face_match = similarity.get_facial_similarity(reference_image, rgb_cropped_image)
+                            # Face, Color, and Texture similarity
+                            face_sim = similarity.get_facial_similarity(reference_image, rgb_cropped_image)
                             unknown_color = similarity.get_dominant_color(cropped_image)
                             color_sim = similarity.get_color_similarity(reference_color, unknown_color)
                             texture_sim = similarity.get_texture_similarity(reference_cv2_image, cropped_image)
-                            engine.update(objectID, face_match, color_sim, texture_sim)
+                            engine.update(objectID, face_sim, color_sim, texture_sim)
                         break
                 person_data['decision'] = engine.get_decision(objectID)
                 if person_data['decision'] == "Match Confirmed":
@@ -168,8 +172,8 @@ def process_video(video_path, reference_image_path, progress_queue):
 
     if final_decision_id is not None:
         scores = engine.get_latest_scores(final_decision_id)
-        # Ensure scores are not None and provide safe formatting
-        face_score = "Yes" if scores[0] else "No"
+        # face_sim is now a float (similarity score)
+        face_score = f"{scores[0]:.2f}" if scores[0] is not None else "N/A"
         color_score = f"{scores[1]:.2f}" if scores[1] is not None else "N/A"
         texture_score = f"{scores[2]:.2f}" if scores[2] is not None else "N/A"
         
