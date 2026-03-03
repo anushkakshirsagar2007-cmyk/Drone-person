@@ -1,38 +1,67 @@
+import os
+import warnings
+
+# Suppress TensorFlow and ONNX Runtime logging
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['ORT_LOGGING_LEVEL'] = '3'
+# Suppress specific InsightFace alignment warning
+warnings.filterwarnings("ignore", category=FutureWarning, module="insightface")
+warnings.filterwarnings("ignore", message=".*SimilarityTransform.from_estimate.*")
+
 import cv2
 import numpy as np
-from deepface import DeepFace
+from insightface.app import FaceAnalysis
 from scipy.spatial import distance as dist
 from sklearn.cluster import KMeans
 from skimage.feature import local_binary_pattern
 import os
 
-# Set environment variable to suppress TensorFlow logging
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+# Initialize InsightFace with Buffalo_L
+# Using CPUExecutionProvider since CUDA dlls are missing on the system
+app = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
+# Pre-prepare with large size for small faces in drone footage
+app.prepare(ctx_id=0, det_size=(1280, 1280))
 
-def get_facial_similarity(reference_image, unknown_image):
+def get_faces(image):
     """
-    Calculates facial similarity using DeepFace with Cosine Similarity.
-    Returns a score between 0 and 1, where 1 is a perfect match.
+    Detects all faces in the image using Buffalo_L and returns face objects with embeddings.
+    """
+    if image is None:
+        return []
+    try:
+        # InsightFace expects BGR image (OpenCV default)
+        faces = app.get(image)
+        return faces
+    except Exception as e:
+        print(f"InsightFace Detection Error: {e}")
+        return []
+
+def get_face_embedding(image):
+    """
+    Extracts a 512-dimensional embedding using InsightFace ArcFace.
     """
     try:
-        # DeepFace.verify returns a dictionary with 'distance' and 'similarity_metric'
-        # Default model is VGG-Face, metric is 'cosine'
-        result = DeepFace.verify(
-            img1_path=reference_image,
-            img2_path=unknown_image,
-            model_name='VGG-Face',
-            distance_metric='cosine',
-            enforce_detection=False,
-            detector_backend='opencv'
-        )
-        
-        # Cosine distance is 0 for identical vectors, 1 for orthogonal.
-        # We convert distance to a similarity score (1 - distance)
-        distance = result['distance']
-        similarity = max(0, 1 - distance)
-        return similarity
+        faces = app.get(image)
+        if len(faces) > 0:
+            # Sort by face size to get the most prominent face
+            faces = sorted(faces, key=lambda x: (x.bbox[2]-x.bbox[0])*(x.bbox[3]-x.bbox[1]), reverse=True)
+            return faces[0].embedding
+        return None
     except Exception as e:
-        print(f"DeepFace Error: {e}")
+        print(f"InsightFace Embedding Error: {e}")
+        return None
+
+def get_cosine_similarity(feat1, feat2):
+    """
+    Computes cosine similarity between two 512-dim embeddings.
+    """
+    if feat1 is None or feat2 is None:
+        return 0.0
+    try:
+        # Cosine similarity = 1 - cosine distance
+        return 1 - dist.cosine(feat1, feat2)
+    except Exception as e:
+        print(f"Cosine Similarity Error: {e}")
         return 0.0
 
 def get_dominant_color(image):

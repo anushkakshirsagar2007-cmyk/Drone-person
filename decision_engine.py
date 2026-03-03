@@ -1,8 +1,8 @@
 class DecisionEngine:
-    def __init__(self, face_threshold=0.65, color_threshold=80, texture_threshold=0.7, consecutive_frames=5):
-        # face_threshold: 0.65 is stricter for VGG-Face cosine similarity
-        # color_threshold: 80 is tight to prevent incorrect matches
-        # texture_threshold: 0.7 is selective for high-confidence matching
+    def __init__(self, face_threshold=0.5, color_threshold=120, texture_threshold=0.5, consecutive_frames=3):
+        # face_threshold: 0.5 as requested for ArcFace cosine similarity
+        # color_threshold: 120 is balanced for Euclidean distance
+        # texture_threshold: 0.5 is balanced for Correlation
         self.face_threshold = face_threshold
         self.color_threshold = color_threshold
         self.texture_threshold = texture_threshold
@@ -23,14 +23,14 @@ class DecisionEngine:
         self.tracked_persons[objectID]['texture_sims'].append(texture_sim)
         self.tracked_persons[objectID]['latest_scores'] = (face_sim, color_sim, texture_sim)
 
-        # STRICT Multi-factor fusion logic:
+        # Simplified Fusion Logic for InsightFace
         is_match = False
-        # Require a solid face match (>0.6) AND at least one clothing factor to be very good
         if face_sim > self.face_threshold:
+            # If face matches well (>0.5), we check if color/texture aren't completely off
             if color_sim < self.color_threshold or texture_sim > self.texture_threshold:
                 is_match = True
-        # Borderline face (0.55-0.65) requires both clothing factors to be excellent
-        elif face_sim > 0.55:
+        elif face_sim > 0.45:
+            # If face is slightly below threshold, require strong clothing match
             if color_sim < (self.color_threshold * 0.7) and texture_sim > (self.texture_threshold * 1.2):
                 is_match = True
 

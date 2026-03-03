@@ -13,6 +13,9 @@
         .scanline { background: linear-gradient(to bottom, transparent 50%, rgba(56, 189, 248, 0.05) 50%); background-size: 100% 4px; pointer-events: none; }
         @keyframes drift { 0% { transform: translate(0,0); } 50% { transform: translate(1%, 1%); } 100% { transform: translate(0,0); } }
         .hud-corner { width: 20px; height: 20px; border-color: #38bdf8; border-width: 2px; position: absolute; }
+        .custom-scrollbar-mini::-webkit-scrollbar { height: 4px; }
+        .custom-scrollbar-mini::-webkit-scrollbar-track { background: #0f172a; }
+        .custom-scrollbar-mini::-webkit-scrollbar-thumb { background: #38bdf8; border-radius: 10px; }
     </style>
 </head>
 <body class="min-h-screen text-slate-200">
@@ -88,53 +91,108 @@
     </div>
 
         <!-- Result State (Hidden Initially) -->
-        <div id="results-container" class="hidden fixed inset-0 z-50 bg-slate-950 p-6 md:p-10 overflow-y-auto">
-            <div class="max-w-6xl mx-auto space-y-8">
-                <div class="flex justify-between items-center border-b border-slate-800 pb-6">
-                    <div class="flex items-center gap-4">
-                        <div class="p-3 rounded-2xl bg-sky-500/10">
-                            <i data-lucide="check-circle" class="w-8 h-8 text-sky-400"></i>
+        <div id="results-container" class="hidden fixed inset-0 z-50 bg-[#020617] p-6 md:p-10 overflow-y-auto">
+            <div class="max-w-5xl mx-auto space-y-10">
+                <!-- Header & Summary Section (Move to Top) -->
+                <div class="space-y-6">
+                    <div class="flex justify-between items-center border-b border-slate-800 pb-6">
+                        <div class="flex items-center gap-4">
+                            <div class="p-3 rounded-2xl bg-sky-500/10">
+                                <i data-lucide="shield-check" class="w-8 h-8 text-sky-400"></i>
+                            </div>
+                            <div>
+                                <h2 class="text-3xl font-black text-white uppercase italic tracking-tight">Intelligence Report</h2>
+                                <p class="text-slate-400 font-mono text-xs uppercase tracking-[0.3em]">Surveillance Feed Analysis Complete</p>
+                            </div>
                         </div>
-                        <div>
-                            <h2 class="text-3xl font-black text-white uppercase italic tracking-tight">Analysis Complete</h2>
-                            <p class="text-slate-400 font-mono text-xs uppercase tracking-[0.3em]">Final Report Generated</p>
-                        </div>
+                        <a href="/" class="px-6 py-3 bg-slate-800 hover:bg-slate-700 rounded-2xl font-bold uppercase tracking-widest transition-all text-xs">New Session</a>
                     </div>
-                    <a href="/" class="px-6 py-3 bg-slate-800 hover:bg-slate-700 rounded-2xl font-bold uppercase tracking-widest transition-all">New Session</a>
-                </div>
 
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div class="lg:col-span-2 space-y-6">
-                        <div class="glass p-2 rounded-3xl shadow-2xl overflow-hidden relative border-sky-500/30">
-                            <video id="result-video" class="w-full aspect-video rounded-2xl" controls autoplay loop>
-                                <source id="result-video-source" src="" type="video/mp4">
-                            </video>
-                        </div>
-                    </div>
-                    
-                    <div class="space-y-6">
-                        <div class="glass p-8 rounded-3xl border-sky-500/40 relative overflow-hidden">
-                            <div class="absolute -right-8 -top-8 w-24 h-24 bg-sky-500/10 rounded-full blur-3xl"></div>
-                            <h3 class="flex items-center gap-3 font-bold text-white mb-6 uppercase tracking-widest text-sm">
-                                <i data-lucide="shield-check" class="w-5 h-5 text-sky-400"></i>
-                                Match Results
-                            </h3>
-                            <div id="explanation-text" class="text-slate-300 leading-relaxed text-sm font-light whitespace-pre-wrap"></div>
-                            
-
-                            <div class="mt-8 pt-8 border-t border-slate-800 space-y-4">
-                                <div class="flex justify-between items-center">
-                                    <span class="text-[10px] text-slate-500 uppercase font-bold">Reliability</span>
-                                    <span class="text-sky-400 font-black text-sm">98.2%</span>
+                    <!-- Final Conclusion Card -->
+                    <div class="glass p-8 rounded-3xl border-sky-500/40 relative overflow-hidden shadow-2xl shadow-sky-500/5">
+                        <div class="absolute -right-8 -top-8 w-32 h-32 bg-sky-500/5 rounded-full blur-3xl"></div>
+                        <div class="flex flex-col md:flex-row gap-8 items-center">
+                            <!-- Visual Confirmation -->
+                            <div class="w-full md:w-1/3 group relative cursor-pointer" onclick="toggleExpandImage(document.getElementById('best-match-img'))">
+                                <div class="absolute top-2 left-2 z-10 bg-slate-950/80 backdrop-blur-md px-2 py-1 rounded text-[8px] font-mono text-sky-400 border border-sky-400/20 uppercase tracking-widest">
+                                    Primary Subject
                                 </div>
-                                <div class="w-full h-1 bg-slate-900 rounded-full overflow-hidden">
-                                    <div class="w-[98%] h-full bg-sky-500 shadow-[0_0_10px_rgba(56,189,248,0.5)]"></div>
+                                <img id="best-match-img" src="" alt="Subject" class="w-full aspect-square object-cover rounded-2xl border border-sky-500/30 shadow-lg transition-transform group-hover:scale-[1.02]" />
+                                <div class="absolute inset-0 bg-sky-500/10 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
+                                    <i data-lucide="maximize-2" class="w-8 h-8 text-white/50"></i>
+                                </div>
+                            </div>
+
+                            <!-- Human Readable Explanation -->
+                            <div class="w-full md:w-2/3 space-y-6">
+                                <div id="explanation-box" class="space-y-4">
+                                    <h3 class="text-sky-400 font-bold uppercase tracking-[0.2em] text-xs">Analysis Conclusion</h3>
+                                    <p id="explanation-text" class="text-slate-200 text-lg md:text-xl font-medium leading-relaxed"></p>
+                                </div>
+
+                                <!-- Tech Metrics Row -->
+                                <div class="grid grid-cols-2 md:grid-cols-3 gap-4 pt-6 border-t border-slate-800/50">
+                                    <div class="space-y-1">
+                                        <p class="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Similarity Index</p>
+                                        <p id="best-score-display" class="text-2xl font-black text-sky-400">0.0000</p>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <p class="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Match Reliability</p>
+                                        <div class="flex items-center gap-2">
+                                            <div class="w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                                <div id="confidence-bar" class="h-full bg-sky-500 transition-all duration-1000" style="width: 0%"></div>
+                                            </div>
+                                            <span id="confidence-text" class="text-xs font-mono text-slate-400">0%</span>
+                                        </div>
+                                    </div>
+                                    <div class="hidden md:block space-y-1">
+                                        <p class="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Model Engine</p>
+                                        <p class="text-xs font-mono text-slate-400 uppercase">ArcFace 512-D</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
+
+                <!-- Forensic Data FAQ Section (Expandable) -->
+                <div class="space-y-4">
+                    <button onclick="toggleExpandSection('forensic-data')" class="w-full glass p-6 rounded-2xl border-slate-800 hover:border-sky-500/30 flex justify-between items-center transition-all group">
+                        <div class="flex items-center gap-4">
+                            <div class="p-2 rounded-lg bg-sky-500/5 text-sky-400">
+                                <i data-lucide="binary" class="w-5 h-5"></i>
+                            </div>
+                            <span class="font-bold text-slate-300 uppercase tracking-widest text-sm">Review Raw Forensic Data (ArcFace Vectors)</span>
+                        </div>
+                        <i id="forensic-chevron" data-lucide="chevron-down" class="w-5 h-5 text-slate-500 group-hover:text-sky-400 transition-transform"></i>
+                    </button>
+
+                    <div id="forensic-data" class="hidden space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                        <div class="glass p-6 rounded-2xl border-slate-800 overflow-hidden shadow-inner bg-slate-950/50">
+                            <div class="overflow-x-auto custom-scrollbar">
+                                <table class="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr class="text-[10px] text-slate-500 uppercase font-bold border-b border-slate-800/50">
+                                            <th class="py-4 px-4 sticky left-0 bg-slate-950 z-10">Subject ID</th>
+                                            <th class="py-4 px-4">Timecode (Frame)</th>
+                                            <th class="py-4 px-4 text-center">Similarity Score</th>
+                                            <th class="py-4 px-4">Biometric Signature (ArcFace Vector)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="raw-data-body" class="text-[11px] font-mono text-slate-400">
+                                        <!-- Rows injected by JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
+        </div>
+
+        <!-- Image Overlay (Hidden Initially) -->
+        <div id="image-overlay" class="hidden fixed inset-0 z-[100] bg-slate-950/95 flex items-center justify-center p-10 cursor-zoom-out" onclick="toggleExpandImage(null)">
+            <img id="expanded-img" src="" class="max-w-full max-h-full rounded-3xl border-2 border-sky-500/50 shadow-[0_0_50px_rgba(56,189,248,0.3)]">
         </div>
 
         <!-- Error Container -->
@@ -155,6 +213,29 @@
     <script>
         lucide.createIcons();
         const source = new EventSource("/progress");
+
+        function toggleExpandImage(img) {
+            const overlay = document.getElementById('image-overlay');
+            const expandedImg = document.getElementById('expanded-img');
+            if (img) {
+                expandedImg.src = img.src;
+                overlay.classList.remove('hidden');
+            } else {
+                overlay.classList.add('hidden');
+            }
+        }
+
+        function toggleExpandSection(id) {
+            const section = document.getElementById(id);
+            const chevron = document.getElementById(id + '-chevron');
+            if (section.classList.contains('hidden')) {
+                section.classList.remove('hidden');
+                chevron.style.transform = 'rotate(180deg)';
+            } else {
+                section.classList.add('hidden');
+                chevron.style.transform = 'rotate(0deg)';
+            }
+        }
         
         source.onmessage = function(event) {
             const data = JSON.parse(event.data);
@@ -197,10 +278,45 @@
 
             if (data.progress === 100) {
                 document.getElementById('results-container').classList.remove('hidden');
-                const videoSource = document.getElementById('result-video-source');
-                const videoPlayer = document.getElementById('result-video');
-                videoSource.src = "{{ url_for('static', filename='') }}" + data.video_path;
-                videoPlayer.load();
+                
+                // Set best match image and score
+                if (data.best_match_image) {
+                    document.getElementById('best-match-img').src = "{{ url_for('static', filename='processed/') }}" + data.best_match_image;
+                    const rawScore = data.best_match_score;
+                    document.getElementById('best-score-display').innerText = rawScore.toFixed(4);
+                    // Still use percentage for the reliability bar UI
+                    const scorePercent = (rawScore * 100).toFixed(2);
+                    document.getElementById('confidence-bar').style.width = scorePercent + '%';
+                    document.getElementById('confidence-text').innerText = scorePercent + '%';
+                }
+
+                // Populate raw data table
+                const tableBody = document.getElementById('raw-data-body');
+                tableBody.innerHTML = '';
+                if (data.raw_data && data.raw_data.length > 0) {
+                    data.raw_data.forEach(row => {
+                        const tr = document.createElement('tr');
+                        tr.className = 'border-b border-slate-900/50 hover:bg-sky-500/5 transition-colors';
+                        const scoreColor = row.cosine_similarity > 0.5 ? 'text-green-400' : 'text-slate-500';
+                        tr.innerHTML = `
+                            <td class="py-4 px-4 text-sky-400 font-bold uppercase tracking-widest sticky left-0 bg-slate-950/80 backdrop-blur-sm z-10 border-r border-slate-800/30">SBT_${row.id}</td>
+                            <td class="py-4 px-4 text-slate-300 font-bold">${row.frame}</td>
+                            <td class="py-4 px-4 text-center font-black ${scoreColor}">${row.cosine_similarity.toFixed(4)}</td>
+                            <td class="py-4 px-4">
+                                <div class="max-w-md overflow-x-auto custom-scrollbar-mini py-2">
+                                    <div class="flex gap-1">
+                                        ${row.embedding_sample.map(val => `<span class="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] text-sky-400/60">${val.toFixed(4)}</span>`).join('')}
+                                        <span class="text-slate-600 self-center ml-2">...</span>
+                                    </div>
+                                </div>
+                            </td>
+                        `;
+                        tableBody.appendChild(tr);
+                    });
+                } else {
+                    tableBody.innerHTML = '<tr><td colspan="4" class="py-12 text-center opacity-50 italic uppercase tracking-widest text-[10px]">No subjects identified in this scanning cycle</td></tr>';
+                }
+
                 document.getElementById('explanation-text').innerText = data.explanation;
                 lucide.createIcons();
                 source.close();
