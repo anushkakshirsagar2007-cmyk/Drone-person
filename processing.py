@@ -95,109 +95,129 @@ def process_video(video_path, reference_image_path, progress_queue):
             # REMOVED: frame = cv2.resize(frame, (800, ...))
             # Keeping full resolution for detecting small faces in crowds
 
+            # Detect persons using SAHI Sliced Prediction for tiny objects in crowds
+            # Optimized slice size and overlap for extremely small object detection
+            result = get_sliced_prediction(
+                frame,
+                detection_model,
+                slice_height=416,
+                slice_width=416,
+                overlap_height_ratio=0.2,
+                overlap_width_ratio=0.2,
+                postprocess_type="NMM",
+                postprocess_match_threshold=0.5
+            )
+            
+            # Convert SAHI results to rect format for tracker
+            person_rects = []
+            for object_prediction in result.object_prediction_list:
+                # Filter by category and confidence to reduce noise in crowds
+                if object_prediction.category.name == "person" and object_prediction.score.value > 0.35:
+                    bbox = object_prediction.bbox.to_xyxy()
+                    # Ensure bbox isn't just a dot, filter extremely small artifacts
+                    if (bbox[2] - bbox[0]) > 5 and (bbox[3] - bbox[1]) > 5:
+                        person_rects.append((int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])))
+
             # Detect faces in full frame using Buffalo_L
             faces = similarity.get_faces(frame)
-            
-            # Convert faces to rect format for tracker (using face bbox)
-            face_rects = []
-            for face in faces:
-                bbox = face.bbox.astype(int)
-                face_rects.append((bbox[0], bbox[1], bbox[2], bbox[3]))
 
-            # Update tracker with face bounding boxes
-            objects = ct.update(face_rects)
+            # Update tracker with high-resolution person bounding boxes
+            objects = ct.update(person_rects)
             frame_match_id = None
 
             persons_in_frame = []
             
             # Helper function for parallel similarity computation
-            def process_face_parallel(person_id, face_obj, current_frame):
-                # face_obj.embedding is already 512-dim from ArcFace
-                f_sim = similarity.get_cosine_similarity(ref_embedding, face_obj.embedding)
+            def process_face_parallel(person_id, person_bbox, current_frame):
+                # 1. Biometric Check (Face)
+                # Find the face that falls within this person's bounding box
+                f_sim = 0.0
+                face_obj = None
                 
-                # Expand bounding box for better clothing/context analysis
-                bbox = face_obj.bbox.astype(int)
+                for face in faces:
+                    f_bbox = face.bbox.astype(int)
+                    # Check if face center is inside person bbox
+                    f_cX = int((f_bbox[0] + f_bbox[2]) / 2.0)
+                    f_cY = int((f_bbox[1] + f_bbox[3]) / 2.0)
+                    
+                    if (person_bbox[0] <= f_cX <= person_bbox[2] and 
+                        person_bbox[1] <= f_cY <= person_bbox[3]):
+                        face_obj = face
+                        f_sim = similarity.get_cosine_similarity(ref_embedding, face.embedding)
+                        break
+                
+                # 2. Clothing/Body Check (Using the full person bbox)
                 h, w = current_frame.shape[:2]
+                startX, startY, endX, endY = person_bbox
                 
-                # Calculate expansion
-                face_w = bbox[2] - bbox[0]
-                face_h = bbox[3] - bbox[1]
+                # Ensure coordinates are within frame
+                startX, startY = max(0, startX), max(0, startY)
+                endX, endY = min(w, endX), min(h, endY)
                 
-                # Expand: top by 0.5h, bottom by 2.5h, sides by 1.0w
-                ext_startX = max(0, bbox[0] - face_w)
-                ext_startY = max(0, bbox[1] - int(face_h * 0.5))
-                ext_endX = min(w, bbox[2] + face_w)
-                ext_endY = min(h, bbox[3] + int(face_h * 2.5))
+                cropped_person = current_frame[startY:endY, startX:endX]
                 
-                cropped_img = current_frame[ext_startY:ext_endY, ext_startX:ext_endX]
-                
-                if cropped_img.size > 0:
-                    u_color = similarity.get_dominant_color(cropped_img)
+                if cropped_person.size > 0:
+                    u_color = similarity.get_dominant_color(cropped_person)
                     c_sim = similarity.get_color_similarity(reference_color, u_color)
-                    t_sim = similarity.get_texture_similarity(reference_cv2_image, cropped_img)
+                    t_sim = similarity.get_texture_similarity(reference_cv2_image, cropped_person)
                 else:
                     c_sim, t_sim = 1000.0, 0.0
                     
-                return person_id, f_sim, c_sim, t_sim
+                return person_id, f_sim, c_sim, t_sim, face_obj
 
-            # Map tracked IDs to detected faces
-            face_to_process = []
+            # Map tracked IDs to detected objects
+            person_to_process = []
             for (objectID, centroid) in objects.items():
                 person_data = {'id': objectID, 'centroid': centroid, 'rect': None, 'decision': 'Uncertain'}
-                found_face = False
-                for i, face in enumerate(faces):
-                    bbox = face.bbox.astype(int)
-                    startX, startY, endX, endY = bbox
+                # Find the SAHI person rect that matches this tracked ID
+                for rect in person_rects:
+                    startX, startY, endX, endY = rect
                     cX = int((startX + endX) / 2.0)
                     cY = int((startY + endY) / 2.0)
-                    # Match based on proximity
-                    if abs(cX - centroid[0]) < 50 and abs(cY - centroid[1]) < 50: 
-                        person_data['rect'] = (startX, startY, endX, endY)
-                        face_to_process.append((objectID, face))
-                        found_face = True
+                    if abs(cX - centroid[0]) < 50 and abs(cY - centroid[1]) < 50:
+                        person_data['rect'] = rect
+                        person_to_process.append((objectID, rect))
                         break
-                
-                if not found_face:
-                    # Still add tracked person even if no face detected in this frame
-                    # This maintains the ID in the UI list if needed, but no data to process
-                    pass
-                     
                 persons_in_frame.append(person_data)
 
             # Process similarity in parallel
-            if face_to_process:
-                with ThreadPoolExecutor(max_workers=min(len(face_to_process), 4)) as executor:
-                    results = list(executor.map(lambda p: process_face_parallel(p[0], p[1], frame), face_to_process))
-                     
-                    # Update engine with results AND collect raw data
-                    for p_id, f_sim, c_sim, t_sim in results:
-                        # Find the face object from face_to_process
-                        face_obj = next(f[1] for f in face_to_process if f[0] == p_id)
-                        bbox = face_obj.bbox.astype(int)
-                         
-                        # CRITICAL: Store raw data for each detected face in the global list
-                        all_raw_data.append({
+            if person_to_process:
+                with ThreadPoolExecutor(max_workers=min(len(person_to_process), 4)) as executor:
+                    results = list(executor.map(lambda p: process_face_parallel(p[0], p[1], frame), person_to_process))
+                    
+                        # Update engine with results AND collect raw data
+                    for p_id, f_sim, c_sim, t_sim, face_obj in results:
+                        # Find the person rect from person_to_process
+                        p_rect = next(p[1] for p in person_to_process if p[0] == p_id)
+                        
+                        # Store raw data for each detected person in the global list
+                        raw_entry = {
                             'id': int(p_id),
                             'frame': int(frame_count),
-                            'cosine_similarity': float(round(float(f_sim), 4)),
-                            'embedding_sample': face_obj.embedding[:10].astype(float).tolist(),
-                            'bbox': bbox.tolist()
-                        })
-                         
-                        # Track best match image
+                            'face_similarity': float(round(float(f_sim), 4)),
+                            'clothing_similarity': float(round(float(c_sim), 4)),
+                            'texture_similarity': float(round(float(t_sim), 4)),
+                            'bbox': [int(x) for x in p_rect]
+                        }
+                        
+                        # Face crop saving disabled as requested
+                        if face_obj:
+                            raw_entry['embedding_sample'] = face_obj.embedding[:10].astype(float).tolist()
+                        else:
+                            raw_entry['embedding_sample'] = [0.0] * 10
+                            
+                        all_raw_data.append(raw_entry)
+                        
+                        # Track best match image (prioritize face similarity)
                         if float(f_sim) > best_match_score:
                             best_match_score = float(f_sim)
                             best_match_filename = f"best_match_{video_filename.split('.')[0]}.jpg"
                             best_match_path = os.path.join('static', 'processed', best_match_filename)
-                             
-                            # Expand slightly for the result image
-                            face_w = bbox[2] - bbox[0]
-                            face_h = bbox[3] - bbox[1]
-                            res_sX = max(0, bbox[0] - int(face_w * 0.5))
-                            res_sY = max(0, bbox[1] - int(face_h * 0.5))
-                            res_eX = min(frame.shape[1], bbox[2] + int(face_w * 0.5))
-                            res_eY = min(frame.shape[0], bbox[3] + int(face_h * 0.5))
-                            best_match_crop = frame[res_sY:res_eY, res_sX:res_eX]
+                            
+                            # Use the full person bbox for the result image if it's the best match
+                            startX, startY, endX, endY = p_rect
+                            best_match_crop = frame[max(0, startY):min(frame.shape[0], endY), 
+                                                   max(0, startX):min(frame.shape[1], endX)]
                             if best_match_crop.size > 0:
                                 cv2.imwrite(best_match_path, best_match_crop)
                                 best_match_image_path = best_match_filename
@@ -217,37 +237,53 @@ def process_video(video_path, reference_image_path, progress_queue):
 
             # Drawing logic
             if frame_match_id is not None:
-                # If a match is confirmed, only draw the matched person
+                # If a match is confirmed, only draw the matched person in GREEN
                 for person in persons_in_frame:
                     if person['id'] == frame_match_id and person['rect'] is not None:
+                        # Extract similarity score for this specific person
+                        person_f_sim = next((r[1] for r in results if r[0] == person['id']), 0.0)
+                        
                         (startX, startY, endX, endY) = person['rect']
                         # Scale coordinates for display
                         dsX, dsY = int(startX * scale_x), int(startY * scale_y)
                         deX, deY = int(endX * scale_x), int(endY * scale_y)
                         dCX, dCY = int(person['centroid'][0] * scale_x), int(person['centroid'][1] * scale_y)
                         
-                        cv2.rectangle(display_frame, (dsX, dsY), (deX, deY), (0, 0, 255), 2)
-                        text = f"ID {person['id']}: Match Confirmed"
-                        cv2.putText(display_frame, text, (dCX - 10, dCY - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-                        cv2.circle(display_frame, (dCX, dCY), 4, (0, 0, 255), -1)
-                        break
+                        # Only GREEN if face similarity meets threshold
+                        if person_f_sim >= engine.face_threshold:
+                            color = (0, 255, 0) # GREEN
+                            text = f"TARGET FOUND: SBT_{person['id']} (S:{person_f_sim:.4f})"
+                        else:
+                            color = (0, 0, 255) # RED (Tracking but not target face)
+                            text = f"ID {person['id']}: Tracking"
+
+                        cv2.rectangle(display_frame, (dsX, dsY), (deX, deY), color, 2)
+                        cv2.putText(display_frame, text, (dsX, dsY - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                        cv2.circle(display_frame, (dCX, dCY), 4, color, -1)
             else:
-                # Otherwise, draw all tracked persons with their status
+                # Otherwise, draw all tracked persons with color based on face match only
                 for person in persons_in_frame:
                     if person['rect'] is not None:
+                        # Extract similarity score for this specific person from results
+                        person_f_sim = next((r[1] for r in results if r[0] == person['id']), 0.0)
+                        
                         (startX, startY, endX, endY) = person['rect']
                         # Scale coordinates for display
                         dsX, dsY = int(startX * scale_x), int(startY * scale_y)
                         deX, deY = int(endX * scale_x), int(endY * scale_y)
                         dCX, dCY = int(person['centroid'][0] * scale_x), int(person['centroid'][1] * scale_y)
                         
-                        color = (0, 255, 0)  # Default green for Uncertain
-                        if person['decision'] == "Match Rejected":
-                            color = (255, 0, 0) # Blue for rejected
+                        # RED by default, GREEN only if face match threshold is met
+                        if person_f_sim >= engine.face_threshold:
+                            color = (0, 255, 0) # GREEN
+                            text = f"MATCH: SBT_{person['id']} (S:{person_f_sim:.4f})"
+                        else:
+                            color = (0, 0, 255) # RED
+                            text = f"ID {person['id']}: Tracking"
+
                         cv2.rectangle(display_frame, (dsX, dsY), (deX, deY), color, 2)
-                        text = f"ID {person['id']}: {person['decision']}"
-                        cv2.putText(display_frame, text, (dCX - 10, dCY - 10),
+                        cv2.putText(display_frame, text, (dsX, dsY - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
                         cv2.circle(display_frame, (dCX, dCY), 4, color, -1)
 
@@ -283,9 +319,9 @@ def process_video(video_path, reference_image_path, progress_queue):
 
     if final_decision_id is not None:
         scores = engine.get_latest_scores(final_decision_id)
-        face_score = f"{scores[0]:.2f}" if scores[0] is not None else "N/A"
-        color_score = f"{scores[1]:.2f}" if scores[1] is not None else "N/A"
-        texture_score = f"{scores[2]:.2f}" if scores[2] is not None else "N/A"
+        face_score = f"{scores[0]:.4f}" if scores[0] is not None else "N/A"
+        color_score = f"{scores[1]:.4f}" if scores[1] is not None else "N/A"
+        texture_score = f"{scores[2]:.4f}" if scores[2] is not None else "N/A"
         
         # Calculate how many frames this person was detected in
         detection_frames = [d for d in all_raw_data if d['id'] == final_decision_id]
@@ -294,8 +330,8 @@ def process_video(video_path, reference_image_path, progress_queue):
         explanation = (
             f"TARGET IDENTIFIED: Person detected in frame sequence {frame_list[0]} to {frame_list[-1]}.\n"
             f"ID {final_decision_id} successfully matched against reference profile.\n"
-            f"Verification criteria met: Consistent biometric similarity across {len(frame_list)} analyzed frames.\n"
-            f"Final Analysis Metrics - Neural Face Match: {face_score}, Chromatic Similarity: {color_score}%, Surface Texture: {texture_score}."
+            f"Verification criteria met: Consistent biometric and clothing similarity across {len(frame_list)} analyzed frames.\n"
+            f"Final Analysis Metrics - Neural Face Match: {face_score}, Clothing Color Similarity: {color_score}, Surface Texture: {texture_score}."
         )
     else:
         # Check if ANY persons were detected at all
@@ -305,7 +341,7 @@ def process_video(video_path, reference_image_path, progress_queue):
             unique_ids = set([d['id'] for d in all_raw_data])
             explanation = (
                 f"SCAN COMPLETE: {len(unique_ids)} subjects tracked, but NO TARGET MATCH found.\n"
-                f"Surveillance subjects identified in frames do not meet the 512-dim ArcFace similarity threshold (>{engine.face_threshold}) for a confirmed match."
+                f"Surveillance subjects identified in frames do not meet the 512-dim ArcFace similarity threshold (>{engine.face_threshold}) or clothing similarity for a confirmed match."
             )
     print("--- Video processing complete ---")
     final_data = {

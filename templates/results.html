@@ -174,9 +174,10 @@
                                     <thead>
                                         <tr class="text-[10px] text-slate-500 uppercase font-bold border-b border-slate-800/50">
                                             <th class="py-4 px-4 sticky left-0 bg-slate-950 z-10">Subject ID</th>
-                                            <th class="py-4 px-4">Timecode (Frame)</th>
-                                            <th class="py-4 px-4 text-center">Similarity Score</th>
-                                            <th class="py-4 px-4">Biometric Signature (ArcFace Vector)</th>
+                                            <th class="py-4 px-4">Timecode</th>
+                                            <th class="py-4 px-4 text-center">Biometric (Face)</th>
+                                            <th class="py-4 px-4 text-center">Clothing Similarity</th>
+                                            <th class="py-4 px-4">Neural Signature</th>
                                         </tr>
                                     </thead>
                                     <tbody id="raw-data-body" class="text-[11px] font-mono text-slate-400">
@@ -280,7 +281,9 @@
                 document.getElementById('results-container').classList.remove('hidden');
                 
                 // Set best match image and score
-                if (data.best_match_image) {
+                if (data.best_match_image && data.best_match_score > 0) {
+                    const bestMatchContainer = document.getElementById('best-match-img').parentElement.parentElement;
+                    bestMatchContainer.classList.remove('hidden');
                     document.getElementById('best-match-img').src = "{{ url_for('static', filename='processed/') }}" + data.best_match_image;
                     const rawScore = data.best_match_score;
                     document.getElementById('best-score-display').innerText = rawScore.toFixed(4);
@@ -288,6 +291,10 @@
                     const scorePercent = (rawScore * 100).toFixed(2);
                     document.getElementById('confidence-bar').style.width = scorePercent + '%';
                     document.getElementById('confidence-text').innerText = scorePercent + '%';
+                } else {
+                    // Hide best match container if no match found
+                    const bestMatchContainer = document.getElementById('best-match-img').parentElement.parentElement;
+                    bestMatchContainer.classList.add('hidden');
                 }
 
                 // Populate raw data table
@@ -297,16 +304,19 @@
                     data.raw_data.forEach(row => {
                         const tr = document.createElement('tr');
                         tr.className = 'border-b border-slate-900/50 hover:bg-sky-500/5 transition-colors';
-                        const scoreColor = row.cosine_similarity > 0.5 ? 'text-green-400' : 'text-slate-500';
+                        
+                        const faceScoreColor = row.face_similarity > 0.5 ? 'text-green-400' : 'text-slate-500';
+                        const clothScoreColor = row.clothing_similarity < 100 ? 'text-sky-400' : 'text-slate-500';
+                        
                         tr.innerHTML = `
                             <td class="py-4 px-4 text-sky-400 font-bold uppercase tracking-widest sticky left-0 bg-slate-950/80 backdrop-blur-sm z-10 border-r border-slate-800/30">SBT_${row.id}</td>
-                            <td class="py-4 px-4 text-slate-300 font-bold">${row.frame}</td>
-                            <td class="py-4 px-4 text-center font-black ${scoreColor}">${row.cosine_similarity.toFixed(4)}</td>
+                            <td class="py-4 px-4 text-slate-300 font-bold">FRM_${row.frame}</td>
+                            <td class="py-4 px-4 text-center font-black ${faceScoreColor}">${row.face_similarity.toFixed(4)}</td>
+                            <td class="py-4 px-4 text-center font-black ${clothScoreColor}">${row.clothing_similarity.toFixed(2)}</td>
                             <td class="py-4 px-4">
-                                <div class="max-w-md overflow-x-auto custom-scrollbar-mini py-2">
+                                <div class="max-w-xs overflow-x-auto custom-scrollbar-mini py-2">
                                     <div class="flex gap-1">
                                         ${row.embedding_sample.map(val => `<span class="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] text-sky-400/60">${val.toFixed(4)}</span>`).join('')}
-                                        <span class="text-slate-600 self-center ml-2">...</span>
                                     </div>
                                 </div>
                             </td>
