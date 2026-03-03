@@ -97,13 +97,14 @@ def process_video(video_path, reference_image_path, progress_queue):
 
             # Detect persons using SAHI Sliced Prediction for tiny objects in crowds
             # Optimized slice size and overlap for extremely small object detection
+            # Increased slice size to 640 for faster processing with fewer slices
             result = get_sliced_prediction(
                 frame,
                 detection_model,
-                slice_height=416,
-                slice_width=416,
-                overlap_height_ratio=0.2,
-                overlap_width_ratio=0.2,
+                slice_height=640,
+                slice_width=640,
+                overlap_height_ratio=0.15,
+                overlap_width_ratio=0.15,
                 postprocess_type="NMM",
                 postprocess_match_threshold=0.5
             )
@@ -114,9 +115,16 @@ def process_video(video_path, reference_image_path, progress_queue):
                 # Filter by category and confidence to reduce noise in crowds
                 if object_prediction.category.name == "person" and object_prediction.score.value > 0.35:
                     bbox = object_prediction.bbox.to_xyxy()
-                    # Ensure bbox isn't just a dot, filter extremely small artifacts
-                    if (bbox[2] - bbox[0]) > 5 and (bbox[3] - bbox[1]) > 5:
-                        person_rects.append((int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])))
+                    
+                    # Skip extremely low resolution or tiny detections to save processing time
+                    p_w = int(bbox[2] - bbox[0])
+                    p_h = int(bbox[3] - bbox[1])
+                    
+                    # More aggressive skipping for tiny background objects (requires at least 30x60)
+                    if p_w < 30 or p_h < 60:
+                        continue
+                        
+                    person_rects.append((int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])))
 
             # Detect faces in full frame using Buffalo_L
             faces = similarity.get_faces(frame)
@@ -136,6 +144,13 @@ def process_video(video_path, reference_image_path, progress_queue):
                 
                 for face in faces:
                     f_bbox = face.bbox.astype(int)
+                    
+                    # Skip low resolution faces (must be at least 40x40 for reliable recognition)
+                    f_w = f_bbox[2] - f_bbox[0]
+                    f_h = f_bbox[3] - f_bbox[1]
+                    if f_w < 40 or f_h < 40:
+                        continue
+                        
                     # Check if face center is inside person bbox
                     f_cX = int((f_bbox[0] + f_bbox[2]) / 2.0)
                     f_cY = int((f_bbox[1] + f_bbox[3]) / 2.0)
