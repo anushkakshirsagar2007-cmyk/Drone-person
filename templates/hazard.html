@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AeroTrace - Hazard Monitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #020617; }
+        .glass { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(16px); border: 1px solid rgba(56, 189, 248, 0.2); }
+        .hazard-alert { animation: pulse-red 2s infinite; }
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #0f172a; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #38bdf8; border-radius: 10px; }
+    </style>
+</head>
+<body class="min-h-screen text-slate-200 p-4 md:p-8">
+    <div class="max-w-7xl mx-auto space-y-8">
+        <!-- Header -->
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-slate-800 pb-8">
+            <div class="flex items-center gap-4">
+                <div class="p-3 rounded-2xl bg-red-500/10 border border-red-500/20">
+                    <i data-lucide="shield-alert" class="w-8 h-8 text-red-500"></i>
+                </div>
+                <div>
+                    <h1 class="text-3xl font-black text-white uppercase italic tracking-tight">Hazard Monitor</h1>
+                    <p class="text-slate-400 font-mono text-xs uppercase tracking-[0.3em]">Real-time Threat Analysis Engine</p>
+                </div>
+            </div>
+            <div class="flex gap-4">
+                <a href="/" class="px-6 py-3 bg-slate-800 hover:bg-slate-700 rounded-2xl font-bold uppercase tracking-widest transition-all text-xs flex items-center gap-2">
+                    <i data-lucide="home" class="w-4 h-4"></i> Home
+                </a>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <!-- Left: Stream Input & Feed -->
+            <div class="lg:col-span-8 space-y-6">
+                <!-- URL Input Card -->
+                <div class="glass p-6 rounded-3xl space-y-4">
+                    <label class="block text-[10px] font-mono text-slate-500 uppercase tracking-widest">RTSP Source Configuration</label>
+                    <div class="flex gap-4">
+                        <input type="text" id="rtsp-url" placeholder="rtsp://your-mobile-ip:8080/h264_pcm.sdp" 
+                               class="flex-grow bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:border-sky-500 transition-colors">
+                        <button onclick="startStream()" class="px-8 py-3 bg-sky-500 hover:bg-sky-400 text-slate-950 font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-sky-500/20">
+                            Connect
+                        </button>
+                    </div>
+                    <p class="text-[10px] text-slate-500 italic">Example: Use 'IP Webcam' app on Android for RTSP streaming</p>
+                </div>
+
+                <!-- Video Feed Card -->
+                <div class="glass rounded-3xl overflow-hidden relative border-slate-800 aspect-video bg-slate-900/50 flex items-center justify-center">
+                    <div id="stream-placeholder" class="text-center space-y-4">
+                        <i data-lucide="video-off" class="w-16 h-16 text-slate-700 mx-auto"></i>
+                        <p class="text-slate-500 uppercase tracking-widest text-sm font-bold">Waiting for Stream Connection</p>
+                    </div>
+                    <img id="hazard-stream" src="" class="hidden w-full h-full object-cover">
+                    
+                    <!-- HUD Overlay -->
+                    <div id="hud-overlay" class="hidden absolute inset-0 pointer-events-none">
+                        <div class="absolute top-6 left-6 flex items-center gap-3">
+                            <div class="w-3 h-3 rounded-full bg-red-500 animate-pulse"></div>
+                            <span class="text-[10px] font-mono text-white uppercase tracking-widest bg-red-500/20 px-2 py-1 rounded">Live Analysis Active</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Alerts & Stats -->
+            <div class="lg:col-span-4 space-y-6">
+                <!-- Real-time Stats -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="glass p-6 rounded-3xl">
+                        <p class="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-1">Detections</p>
+                        <p id="stat-objects" class="text-3xl font-black text-white">0</p>
+                    </div>
+                    <div class="glass p-6 rounded-3xl">
+                        <p class="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-1">Latency</p>
+                        <p class="text-3xl font-black text-sky-400">24ms</p>
+                    </div>
+                </div>
+
+                <!-- Active Alerts -->
+                <div class="glass p-6 rounded-3xl flex-grow flex flex-col min-h-[400px]">
+                    <h3 class="flex items-center gap-3 font-bold text-white uppercase tracking-widest text-sm mb-6 pb-4 border-b border-slate-800">
+                        <i data-lucide="bell" class="w-5 h-5 text-red-500"></i>
+                        Threat Notification Log
+                    </h3>
+                    <div id="alert-log" class="space-y-4 overflow-y-auto custom-scrollbar flex-grow pr-2">
+                        <!-- Placeholder for empty log -->
+                        <div id="no-alerts" class="text-center py-12 opacity-30 italic uppercase tracking-widest text-[10px]">
+                            No threats identified
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast (Fixed Bottom Right) -->
+    <div id="hazard-toast" class="fixed bottom-8 right-8 z-[100] transform translate-y-32 transition-transform duration-500">
+        <div class="glass border-red-500/50 p-6 rounded-2xl flex items-center gap-6 shadow-2xl shadow-red-500/10">
+            <div class="p-4 rounded-xl bg-red-500/20">
+                <i data-lucide="alert-triangle" class="w-8 h-8 text-red-500"></i>
+            </div>
+            <div>
+                <h4 class="text-red-500 font-black uppercase tracking-widest text-sm">Critical Hazard Alert</h4>
+                <p id="toast-msg" class="text-slate-300 text-xs mt-1">Weapon detected in surveillance zone.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+        let alertSource = null;
+
+        function startStream() {
+            const url = document.getElementById('rtsp-url').value;
+            if (!url) {
+                alert("Please enter a valid RTSP URL");
+                return;
+            }
+
+            const img = document.getElementById('hazard-stream');
+            const placeholder = document.getElementById('stream-placeholder');
+            const hud = document.getElementById('hud-overlay');
+
+            placeholder.classList.add('hidden');
+            img.classList.remove('hidden');
+            hud.classList.remove('hidden');
+
+            // Set the stream source
+            img.src = `/hazard_feed?rtsp_url=${encodeURIComponent(url)}`;
+            
+            // Connect to alert stream
+            if (alertSource) alertSource.close();
+            alertSource = new EventSource("/hazard_alerts");
+            
+            alertSource.onmessage = function(event) {
+                const alerts = JSON.parse(event.data);
+                if (alerts && alerts.length > 0) {
+                    alerts.forEach(alert => {
+                        const level = alert.type.includes('Weapon') || alert.type.includes('Fire') ? 'high' : 'medium';
+                        addAlert(alert.type, level);
+                    });
+                }
+            };
+        }
+
+        function addAlert(type, level = 'high') {
+            const log = document.getElementById('alert-log');
+            const noAlerts = document.getElementById('no-alerts');
+            if (noAlerts) noAlerts.remove();
+
+            const time = new Date().toLocaleTimeString();
+            const div = document.createElement('div');
+            const colorClass = level === 'high' ? 'border-red-500/30 bg-red-500/5' : 'border-amber-500/30 bg-amber-500/5';
+            const iconClass = level === 'high' ? 'text-red-500' : 'text-amber-500';
+            const icon = level === 'high' ? 'alert-octagon' : 'users';
+
+            div.className = `p-4 rounded-2xl border ${colorClass} animate-in slide-in-from-right duration-300`;
+            div.innerHTML = `
+                <div class="flex justify-between items-start mb-2">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="${icon}" class="w-4 h-4 ${iconClass}"></i>
+                        <span class="font-bold text-xs uppercase tracking-wider">${type}</span>
+                    </div>
+                    <span class="text-[9px] font-mono opacity-40">${time}</span>
+                </div>
+                <p class="text-[10px] text-slate-400">Neural network identified a potential hazard in Sector A-1. Immediate attention required.</p>
+            `;
+            log.prepend(div);
+            lucide.createIcons();
+            
+            showToast(type);
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('hazard-toast');
+            document.getElementById('toast-msg').innerText = `${msg} detected in surveillance zone.`;
+            toast.classList.remove('translate-y-32');
+            
+            setTimeout(() => {
+                toast.classList.add('translate-y-32');
+            }, 5000);
+        }
+
+        // For demo purposes - simulate detections since we don't have a live RTSP stream
+        function simulateAlerts() {
+            const threats = ['Weapon Detected', 'Fire Identification', 'Anomalous Gathering'];
+            setTimeout(() => addAlert(threats[0]), 5000);
+            setTimeout(() => addAlert(threats[2], 'medium'), 12000);
+        }
+    </script>
+</body>
+</html>

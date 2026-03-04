@@ -5,6 +5,7 @@ import processing
 import threading
 import queue
 import json
+from hazard_detection import generate_hazard_frames, hazard_alerts_queue
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads/'
@@ -43,6 +44,30 @@ def index():
             
             return render_template('results.html')
     return render_template('index.html')
+
+@app.route('/hazard')
+def hazard():
+    return render_template('hazard.html')
+
+@app.route('/hazard_feed')
+def hazard_feed():
+    rtsp_url = request.args.get('rtsp_url')
+    if not rtsp_url:
+        return "RTSP URL required", 400
+    return Response(generate_hazard_frames(rtsp_url),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/hazard_alerts')
+def hazard_alerts():
+    def event_stream():
+        while True:
+            try:
+                # Wait for alerts from the queue
+                alerts = hazard_alerts_queue.get(timeout=1.0)
+                yield f"data: {json.dumps(alerts)}\n\n"
+            except queue.Empty:
+                continue
+    return Response(event_stream(), mimetype='text/event-stream')
 
 @app.route('/progress')
 def progress():

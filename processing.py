@@ -95,36 +95,41 @@ def process_video(video_path, reference_image_path, progress_queue):
             # REMOVED: frame = cv2.resize(frame, (800, ...))
             # Keeping full resolution for detecting small faces in crowds
 
-            # Detect persons using SAHI Sliced Prediction for tiny objects in crowds
-            # Optimized slice size and overlap for extremely small object detection
-            # Increased slice size to 640 for faster processing with fewer slices
-            result = get_sliced_prediction(
-                frame,
-                detection_model,
-                slice_height=640,
-                slice_width=640,
-                overlap_height_ratio=0.15,
-                overlap_width_ratio=0.15,
-                postprocess_type="NMM",
-                postprocess_match_threshold=0.5
-            )
+            # Determine if we should use SAHI based on crowd density
+            # First, do a quick standard detection to count people
+            # We use a very fast nano model for this pre-check
+            base_detect = detection_model.model(frame, classes=[0], conf=0.3, verbose=False)[0]
+            person_count_pre = len(base_detect.boxes)
             
-            # Convert SAHI results to rect format for tracker
-            person_rects = []
-            for object_prediction in result.object_prediction_list:
-                # Filter by category and confidence to reduce noise in crowds
-                if object_prediction.category.name == "person" and object_prediction.score.value > 0.35:
-                    bbox = object_prediction.bbox.to_xyxy()
-                    
-                    # Skip extremely low resolution or tiny detections to save processing time
-                    p_w = int(bbox[2] - bbox[0])
-                    p_h = int(bbox[3] - bbox[1])
-                    
-                    # More aggressive skipping for tiny background objects (requires at least 30x60)
-                    if p_w < 30 or p_h < 60:
-                        continue
-                        
-                    person_rects.append((int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])))
+            use_sahi = person_count_pre >= 10
+            
+            if use_sahi:
+                # Crowd Mode: Use SAHI Sliced Prediction for tiny objects
+                print(f"--- Crowd Detected ({person_count_pre} persons). Using SAHI Sliced Prediction. ---")
+                result = get_sliced_prediction(
+                    frame,
+                    detection_model,
+                    slice_height=640,
+                    slice_width=640,
+                    overlap_height_ratio=0.15,
+                    overlap_width_ratio=0.15,
+                    postprocess_type="NMM",
+                    postprocess_match_threshold=0.5
+                )
+                
+                # Convert SAHI results to rect format
+                person_rects = []
+                for object_prediction in result.object_prediction_list:
+                    if object_prediction.category.name == "person" and object_prediction.score.value > 0.35:
+                        bbox = object_prediction.bbox.to_xyxy()
+                        person_rects.append((int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])))
+            else:
+                # Small Group Mode: Use standard detection for tighter, more accurate bounding boxes
+                print(f"--- Small Group Detected ({person_count_pre} persons). Using standard detection. ---")
+                person_rects = []
+                for box in base_detect.boxes:
+                    b = box.xyxy[0].cpu().numpy()
+                    person_rects.append((int(b[0]), int(b[1]), int(b[2]), int(b[3])))
 
             # Detect faces in full frame using Buffalo_L
             faces = similarity.get_faces(frame)
