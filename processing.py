@@ -354,6 +354,9 @@ def process_video(video_path, reference_image_path, progress_queue):
             f"Final Analysis Metrics - Neural Face Match: {face_score}, Clothing Color Similarity: {color_score}, Surface Texture: {texture_score}."
         )
     else:
+        # If no target match is confirmed, we explicitly clear the best_match_image
+        best_match_image_path = None
+        
         # Check if ANY persons were detected at all
         if not all_raw_data:
             explanation = "NO TARGETS DETECTED: Surveillance scan complete. No human subjects were identified within the processed video frames."
