@@ -17,14 +17,14 @@
         .upload-card:hover { transform: translateY(-4px); border-color: rgba(56, 189, 248, 0.4); }
     </style>
 </head>
-<body class="h-screen text-slate-200 p-4 md:p-8 relative bg-[#020617] overflow-hidden flex items-center justify-center">
+<body class="min-h-screen text-slate-200 p-4 md:p-8 relative bg-[#020617] flex items-center justify-center overflow-y-auto">
     <!-- Ambient Glow Background -->
     <div class="fixed inset-0 z-0 pointer-events-none">
         <div class="absolute top-0 -left-24 w-96 h-96 bg-sky-500/10 rounded-full blur-[120px]"></div>
         <div class="absolute bottom-0 -right-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-[120px]"></div>
     </div>
 
-    <div class="max-w-4xl mx-auto w-full space-y-10 relative z-10">
+    <div class="max-w-[1600px] mx-auto w-full py-8 space-y-8 relative z-10">
         <!-- Header -->
         <div class="text-center space-y-2">
             <div class="inline-flex p-3 rounded-2xl bg-sky-500/10 mb-1 border border-sky-500/20 shadow-lg shadow-sky-500/10">
@@ -36,54 +36,111 @@
             <p class="text-slate-400 font-mono text-xs tracking-[0.4em] uppercase opacity-70">Automated Drone-Assisted Surveillance</p>
         </div>
 
-        <!-- Main Upload Card -->
         <div class="glass p-8 md:p-10 rounded-[3rem] shadow-2xl relative border border-white/5 overflow-hidden">
             <div class="absolute -right-24 -top-24 w-64 h-64 bg-sky-500/5 rounded-full blur-3xl transition-colors duration-700"></div>
             
-            <form action="/" method="POST" enctype="multipart/form-data" class="space-y-8">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <!-- Profile Upload -->
-                    <div class="space-y-3">
-                        <div id="drop-zone-ref" class="relative group/zone cursor-pointer">
-                            <input type="file" name="reference_image" id="reference_image" class="hidden" accept="image/*" required>
-                            <div class="border-2 border-slate-700 group-hover/zone:border-sky-500 bg-slate-900/60 rounded-3xl p-12 transition-all duration-500 text-center space-y-4 backdrop-blur-md shadow-inner">
-                                <div class="w-14 h-14 bg-sky-500/20 rounded-2xl flex items-center justify-center mx-auto group-hover/zone:scale-110 transition-transform duration-500 border border-sky-500/30">
-                                    <i data-lucide="user" class="w-8 h-8 text-sky-400"></i>
+            <form action="/analyze_rtsp" method="POST" enctype="multipart/form-data" class="space-y-8">
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                    <!-- Left: Source Configuration & Video Feed -->
+                    <div class="lg:col-span-8 space-y-6">
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <div class="p-2 rounded-lg bg-sky-500/10 border border-sky-500/20">
+                                        <i data-lucide="video" class="w-5 h-5 text-sky-400"></i>
+                                    </div>
+                                    <h3 class="text-sm font-black text-white uppercase tracking-[0.2em]">Source & Live Intelligence</h3>
                                 </div>
-                                <div class="space-y-1">
-                                    <p class="text-sm font-black text-white uppercase tracking-[0.2em] group-hover/zone:text-sky-400 transition-colors">Target Profile</p>
-                                    <p id="ref-name" class="text-[10px] text-slate-300 font-bold font-mono truncate px-2">IMG ONLY (JPEG/PNG)</p>
+                                
+                                <!-- Source Toggle -->
+                                <div class="flex bg-slate-900/80 rounded-xl p-1 border border-slate-800">
+                                    <button type="button" id="btn-rtsp" onclick="setSourceMode('rtsp')" class="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all bg-sky-500 text-slate-950">RTSP</button>
+                                    <button type="button" id="btn-usb" onclick="setSourceMode('usb')" class="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all text-slate-400 hover:text-white">USB/WiFi</button>
+                                    <input type="hidden" name="is_usb" id="is-usb-hidden" value="false">
+                                </div>
+                            </div>
+                            
+                            <div id="rtsp-input-group">
+                                <label class="block text-[10px] font-mono text-slate-500 uppercase tracking-widest mb-2">Remote Drone/Mobile RTSP</label>
+                                <input type="text" name="rtsp_url" id="rtsp-url" placeholder="rtsp://your-mobile-ip:8080/h264_pcm.sdp" 
+                                       class="w-full bg-slate-900/60 border border-slate-700 rounded-2xl px-5 py-4 text-sm font-mono focus:outline-none focus:border-sky-500 transition-all text-white placeholder:text-slate-600">
+                            </div>
+                            
+                            <div id="usb-input-group" class="hidden space-y-4">
+                                <div class="p-4 bg-sky-500/5 border border-sky-500/10 rounded-2xl space-y-2">
+                                    <p class="text-[9px] font-bold text-sky-400 uppercase tracking-widest">Mobile WiFi Connection (DroidCam)</p>
+                                    <div class="flex gap-2">
+                                        <input type="text" id="usb-ip-input" placeholder="100.77.102.124:4747" 
+                                               class="flex-grow bg-slate-900/60 border border-slate-700 rounded-xl px-5 py-3 text-sm font-mono focus:outline-none focus:border-sky-500 transition-all text-white placeholder:text-slate-600">
+                                        <button type="button" onclick="updateUSBUrlFromIP()" class="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">
+                                            Apply IP
+                                        </button>
+                                    </div>
+                                    <p class="text-[8px] text-slate-500 italic">Ensure DroidCam app is open on your phone and on the same network.</p>
+                                </div>
+
+                                <div class="flex items-center gap-3">
+                                    <div class="h-px flex-grow bg-slate-800"></div>
+                                    <span class="text-[8px] font-mono text-slate-600 uppercase">OR Hardware USB</span>
+                                    <div class="h-px flex-grow bg-slate-800"></div>
+                                </div>
+
+                                <div class="flex items-center gap-2">
+                                    <select id="usb-index" onchange="updateUSBUrl()" class="flex-grow bg-slate-900/60 border border-slate-700 rounded-xl px-4 py-3 text-xs font-mono focus:outline-none focus:border-sky-500 transition-all text-white">
+                                        <option value="0">Default Camera (Index 0)</option>
+                                        <option value="1">External Camera 1</option>
+                                        <option value="2">External Camera 2</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <!-- Video Feed Area (Enlarged) -->
+                            <div class="relative w-full aspect-video bg-slate-950/50 rounded-[2.5rem] border border-slate-800 overflow-hidden group shadow-2xl shadow-sky-500/5">
+                                <div id="stream-placeholder" class="absolute inset-0 flex flex-col items-center justify-center space-y-3 opacity-40">
+                                    <i data-lucide="video-off" class="w-12 h-12"></i>
+                                    <p class="text-[10px] font-mono uppercase tracking-widest">Feed Offline</p>
+                                </div>
+                                <img id="live-stream-feed" src="" class="hidden w-full h-full object-contain bg-black">
+                                
+                                <div class="absolute top-6 left-6 flex items-center gap-3">
+                                    <button type="button" onclick="startLiveStream()" class="px-6 py-3 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-2xl text-[10px] font-black uppercase tracking-[0.15em] transition-all shadow-xl shadow-sky-500/20 active:scale-95">
+                                        Initialize Intelligence Link
+                                    </button>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Stream Upload -->
-                    <div class="space-y-3">
-                        <div id="drop-zone-video" class="relative group/zone cursor-pointer">
-                            <input type="file" name="video" id="video" class="hidden" accept="video/mp4,video/x-m4v,video/*" required>
-                            <div class="border-2 border-slate-700 group-hover/zone:border-sky-500 bg-slate-900/60 rounded-3xl p-12 transition-all duration-500 text-center space-y-4 backdrop-blur-md shadow-inner">
-                                <div class="w-14 h-14 bg-sky-500/20 rounded-2xl flex items-center justify-center mx-auto group-hover/zone:scale-110 transition-transform duration-500 border border-sky-500/30">
-                                    <i data-lucide="radio" class="w-8 h-8 text-sky-400"></i>
+                    <!-- Right: Profile Upload -->
+                    <div class="lg:col-span-4 space-y-6">
+                        <div class="space-y-4">
+                            <div class="flex items-center gap-3">
+                                <div class="p-2 rounded-lg bg-sky-500/10 border border-sky-500/20">
+                                    <i data-lucide="user-search" class="w-5 h-5 text-sky-400"></i>
                                 </div>
-                                <div class="space-y-1">
-                                    <p class="text-sm font-black text-white uppercase tracking-[0.2em] group-hover/zone:text-sky-400 transition-colors">Visual Stream</p>
-                                    <p id="video-name" class="text-[10px] text-slate-300 font-bold font-mono truncate px-2">VIDEO ONLY (MP4/AVI)</p>
+                                <h3 class="text-sm font-black text-white uppercase tracking-[0.2em]">Target Profile</h3>
+                            </div>
+
+                            <div id="drop-zone-ref" class="relative group/zone cursor-pointer h-full">
+                                <input type="file" name="reference_image" id="reference_image" class="hidden" accept="image/*" required>
+                                <div class="border-2 border-dashed border-slate-700 group-hover/zone:border-sky-500/50 bg-slate-900/40 rounded-3xl p-8 h-full transition-all duration-500 text-center flex flex-col items-center justify-center space-y-4">
+                                    <div class="w-12 h-12 bg-sky-500/10 rounded-2xl flex items-center justify-center group-hover/zone:scale-110 transition-transform duration-500 border border-sky-500/20">
+                                        <i data-lucide="upload-cloud" class="w-6 h-6 text-sky-400"></i>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <p id="ref-name" class="text-[10px] text-slate-400 font-bold font-mono uppercase tracking-widest px-2">Click to Upload JPG/PNG</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="flex flex-col md:flex-row gap-4 mt-4">
-                    <button type="submit" class="flex-grow py-6 bg-sky-500 hover:bg-sky-400 text-white rounded-[2rem] font-black uppercase tracking-[0.2em] text-[11px] transition-all duration-500 shadow-2xl shadow-sky-500/20 hover:shadow-sky-500/40 hover:-translate-y-1 flex items-center justify-center gap-4 group/btn">
-                        <i data-lucide="zap" class="w-5 h-5 fill-current group-hover/btn:scale-125 transition-transform"></i>
-                        Initiate Search Protocol
+                <div class="pt-6">
+                    <button type="submit" class="w-full py-6 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-[2rem] font-black uppercase tracking-[0.2em] text-xs transition-all duration-500 shadow-2xl shadow-sky-500/20 hover:shadow-sky-500/40 hover:-translate-y-1 flex items-center justify-center gap-4 group/btn">
+                        <i data-lucide="zap" class="w-5 h-5 fill-current"></i>
+                        Execute Neural Scan (Last 10s)
                     </button>
-                    <a href="/hazard" class="flex-grow py-6 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-[2rem] font-black uppercase tracking-[0.2em] text-[11px] transition-all duration-500 border border-red-500/20 flex items-center justify-center gap-4 group shadow-lg shadow-red-500/5 hover:-translate-y-1">
-                        <i data-lucide="shield-alert" class="w-5 h-5 group-hover:animate-bounce"></i>
-                        Hazard Monitor (RTSP)
-                    </a>
                 </div>
             </form>
         </div>
@@ -165,27 +222,94 @@
         const form = document.querySelector('form');
         const loader = document.getElementById('loader');
         const refInput = document.getElementById('reference_image');
-        const videoInput = document.getElementById('video');
         const refName = document.getElementById('ref-name');
-        const videoName = document.getElementById('video-name');
 
         refInput.addEventListener('change', e => {
-            if(e.target.files.length > 0) refName.textContent = e.target.files[0].name;
-        });
-
-        videoInput.addEventListener('change', e => {
-            if(e.target.files.length > 0) videoName.textContent = e.target.files[0].name;
+            if(e.target.files.length > 0) {
+                refName.textContent = e.target.files[0].name;
+                refName.classList.remove('text-slate-400');
+                refName.classList.add('text-sky-400');
+            }
         });
 
         const dropZoneRef = document.getElementById('drop-zone-ref');
-        const dropZoneVideo = document.getElementById('drop-zone-video');
-
         dropZoneRef.addEventListener('click', () => refInput.click());
-        dropZoneVideo.addEventListener('click', () => videoInput.click());
 
         form.addEventListener('submit', () => {
             loader.classList.remove('hidden');
         });
+
+        let sourceMode = 'rtsp';
+
+        function setSourceMode(mode) {
+            sourceMode = mode;
+            const isUsbHidden = document.getElementById('is-usb-hidden');
+            const rtspGroup = document.getElementById('rtsp-input-group');
+            const usbGroup = document.getElementById('usb-input-group');
+            const btnRtsp = document.getElementById('btn-rtsp');
+            const btnUsb = document.getElementById('btn-usb');
+            const rtspUrlInput = document.getElementById('rtsp-url');
+
+            if (mode === 'usb') {
+                isUsbHidden.value = 'true';
+                rtspGroup.classList.add('hidden');
+                usbGroup.classList.remove('hidden');
+                btnUsb.classList.add('bg-sky-500', 'text-slate-950');
+                btnUsb.classList.remove('text-slate-400');
+                btnRtsp.classList.remove('bg-sky-500', 'text-slate-950');
+                btnRtsp.classList.add('text-slate-400');
+                updateUSBUrl();
+            } else {
+                isUsbHidden.value = 'false';
+                rtspGroup.classList.remove('hidden');
+                usbGroup.classList.add('hidden');
+                btnRtsp.classList.add('bg-sky-500', 'text-slate-950');
+                btnRtsp.classList.remove('text-slate-400');
+                btnUsb.classList.remove('bg-sky-500', 'text-slate-950');
+                btnUsb.classList.add('text-slate-400');
+                rtspUrlInput.value = '';
+            }
+        }
+
+        function updateUSBUrl() {
+            const usbIndex = document.getElementById('usb-index').value;
+            document.getElementById('rtsp-url').value = usbIndex;
+        }
+
+        function updateUSBUrlFromIP() {
+            const ip = document.getElementById('usb-ip-input').value;
+            if (ip) {
+                document.getElementById('rtsp-url').value = ip;
+            }
+        }
+
+        function startLiveStream() {
+            const rtspUrlInput = document.getElementById('rtsp-url');
+            let rtspUrl = rtspUrlInput.value;
+            
+            if (sourceMode === 'usb') {
+                const usbIp = document.getElementById('usb-ip-input').value;
+                if (usbIp) {
+                    rtspUrl = usbIp;
+                    rtspUrlInput.value = usbIp;
+                }
+            }
+
+            if (!rtspUrl) {
+                alert("Please enter a valid URL or IP");
+                return;
+            }
+
+            const img = document.getElementById('live-stream-feed');
+            const placeholder = document.getElementById('stream-placeholder');
+
+            placeholder.classList.add('hidden');
+            img.classList.remove('hidden');
+
+            // Set the stream source
+            const isUsb = sourceMode === 'usb';
+            img.src = `/hazard_feed?rtsp_url=${encodeURIComponent(rtspUrl)}&is_usb=${isUsb}`;
+        }
     </script>
 </body>
 </html>

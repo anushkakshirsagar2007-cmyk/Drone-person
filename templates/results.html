@@ -284,25 +284,26 @@
                 document.getElementById('results-container').classList.remove('hidden');
                 
                 // Set best match image and score
-                if (data.best_match_image && data.best_match_score > 0) {
+                if (data.best_match_score !== undefined && data.best_match_score > 0) {
                     const bestMatchImage = document.getElementById('best-match-img');
-                    const bestMatchContainer = bestMatchImage.closest('.flex-col.md\\:flex-row'); // The wrapper inside the conclusion card
-                    const visualColumn = bestMatchImage.parentElement; // The w-full md:w-1/3 column
-                    const textColumn = visualColumn.nextElementSibling; // The w-full md:w-2/3 column
+                    const visualColumn = bestMatchImage.parentElement;
+                    const textColumn = visualColumn.nextElementSibling;
                     
                     visualColumn.classList.remove('hidden');
                     textColumn.classList.remove('md:w-full');
                     textColumn.classList.add('md:w-2/3');
                     
-                    bestMatchImage.src = "{{ url_for('static', filename='processed/') }}" + data.best_match_image;
-                    const rawScore = data.best_match_score;
+                    if (data.best_match_image) {
+                        bestMatchImage.src = "{{ url_for('static', filename='processed/') }}" + data.best_match_image;
+                    }
+                    const rawScore = data.best_match_score || 0;
                     document.getElementById('best-score-display').innerText = rawScore.toFixed(4);
                     // Still use percentage for the reliability bar UI
                     const scorePercent = (rawScore * 100).toFixed(2);
                     document.getElementById('confidence-bar').style.width = scorePercent + '%';
                     document.getElementById('confidence-text').innerText = scorePercent + '%';
                 } else {
-                    // Hide only the image column if no match found
+                    // Hide only the image column if no match found or score is 0
                     const bestMatchImage = document.getElementById('best-match-img');
                     const visualColumn = bestMatchImage.parentElement;
                     const textColumn = visualColumn.nextElementSibling;
@@ -310,6 +311,10 @@
                     visualColumn.classList.add('hidden');
                     textColumn.classList.remove('md:w-2/3');
                     textColumn.classList.add('md:w-full');
+                    
+                    document.getElementById('best-score-display').innerText = "0.0000";
+                    document.getElementById('confidence-bar').style.width = '0%';
+                    document.getElementById('confidence-text').innerText = '0%';
                 }
 
                 // Populate raw data table

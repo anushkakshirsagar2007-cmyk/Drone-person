@@ -65,39 +65,96 @@ class HazardDetector:
 
         return hazards, processed_frame, 0 # Person count not needed for pure fire detection
 
-def generate_hazard_frames(rtsp_url):
-    detector = HazardDetector()
+def generate_usb_frames(camera_index=0):
+    """Generates raw frames from USB camera or DroidCam MJPEG stream."""
+    # Check if camera_index is a DroidCam IP:Port
+    if isinstance(camera_index, str) and ('.' in camera_index or ':' in camera_index):
+        # DroidCam MJPEG URL format
+        if not camera_index.startswith('http'):
+            source = f"http://{camera_index}/video"
+        else:
+            source = camera_index
+    else:
+        try:
+            source = int(camera_index)
+        except:
+            source = camera_index
+
+    print(f"--- Attempting to open source: {source} ---")
+    if isinstance(source, int):
+        # Hardware USB
+        cap = cv2.VideoCapture(source, cv2.CAP_DSHOW)
+    else:
+        # MJPEG or RTSP
+        # Try default first, then FFMPEG for DroidCam
+        cap = cv2.VideoCapture(source)
+        if not cap.isOpened() and isinstance(source, str) and source.startswith('http'):
+            cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
     
-    # Robust connection options for RTSP/Mobile Cameras
-    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
-    cap = cv2.VideoCapture(rtsp_url)
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1) # Reduce latency
+    # Increase timeout for network streams
+    if isinstance(source, str) and (source.startswith('http') or source.startswith('rtsp')):
+        cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000)
+    
+    if isinstance(source, int): # Only set for hardware USB
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
     
     if not cap.isOpened():
-        print(f"Error: Could not open RTSP stream at {rtsp_url}")
-        return
+        # Fallback for DroidCam MJPEG if /video endpoint fails
+        if isinstance(source, str) and '/video' in source:
+            alt_source = source.replace('/video', '/mjpegfeed')
+            print(f"--- Retrying with alternate DroidCam endpoint: {alt_source} ---")
+            cap = cv2.VideoCapture(alt_source)
+            if not cap.isOpened():
+                cap = cv2.VideoCapture(alt_source, cv2.CAP_FFMPEG)
+            
+            if cap.isOpened():
+                source = alt_source
+            else:
+                # Direct base URL check
+                base_url = source.split('/video')[0]
+                print(f"--- Final retry with base URL: {base_url} ---")
+                cap = cv2.VideoCapture(base_url)
+                if not cap.isOpened():
+                    cap = cv2.VideoCapture(base_url, cv2.CAP_FFMPEG)
+                
+                if not cap.isOpened():
+                    print(f"--- Error: All stream attempts failed for {source} ---")
+                    return
+                source = base_url
+        else:
+            print(f"--- Error: Could not open source {source} ---")
+            return
 
-    print(f"Connected to RTSP stream: {rtsp_url}")
-    
     while True:
         success, frame = cap.read()
         if not success:
-            print("Stream interrupted. Attempting to reconnect...")
+            break
+            
+        ret, buffer = cv2.imencode('.jpg', frame)
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+    
+    cap.release()
+def generate_raw_rtsp_frames(rtsp_url):
+    """Generates raw frames from RTSP stream without processing."""
+    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
+    cap = cv2.VideoCapture(rtsp_url)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    
+    if not cap.isOpened():
+        return
+
+    while True:
+        success, frame = cap.read()
+        if not success:
             cap.release()
-            time.sleep(2) # Wait 2 seconds before reconnecting
+            time.sleep(1)
             cap = cv2.VideoCapture(rtsp_url)
             continue
             
-        hazards, processed_frame, p_count = detector.detect_hazards(frame)
-        
-        # Encode the frame as JPEG
-        ret, buffer = cv2.imencode('.jpg', processed_frame)
-        frame_bytes = buffer.tobytes()
-        
-        # We can't easily send JSON meta-data through the same multipart stream 
-        # without complex client-side parsing. For now, we'll focus on the visual.
-        
+        ret, buffer = cv2.imencode('.jpg', frame)
         yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-        
+               b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+    
     cap.release()

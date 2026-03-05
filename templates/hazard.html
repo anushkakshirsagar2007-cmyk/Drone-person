@@ -44,17 +44,37 @@
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
             <!-- Left: Stream Input & Feed -->
             <div class="lg:col-span-8 space-y-6">
-                <!-- URL Input Card -->
-                <div class="glass p-6 rounded-3xl space-y-4">
-                    <label class="block text-[10px] font-mono text-slate-500 uppercase tracking-widest">RTSP Source Configuration</label>
-                    <div class="flex gap-4">
-                        <input type="text" id="rtsp-url" placeholder="rtsp://your-mobile-ip:8080/h264_pcm.sdp" 
-                               class="flex-grow bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:border-sky-500 transition-colors">
-                        <button onclick="startStream()" class="px-8 py-3 bg-sky-500 hover:bg-sky-400 text-slate-950 font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-sky-500/20">
-                            Connect
-                        </button>
-                    </div>
-                    <p class="text-[10px] text-slate-500 italic">Example: Use 'IP Webcam' app on Android for RTSP streaming</p>
+                <!-- URL & Profile Configuration -->
+                <div class="glass p-6 rounded-3xl space-y-6">
+                    <form id="rtsp-analysis-form" action="/analyze_rtsp" method="POST" enctype="multipart/form-data">
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-[10px] font-mono text-slate-500 uppercase tracking-widest mb-2">RTSP Source URL</label>
+                                <input type="text" name="rtsp_url" id="rtsp-url" placeholder="rtsp://your-mobile-ip:8080/h264_pcm.sdp" 
+                                       class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:border-sky-500 transition-colors text-white">
+                            </div>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="space-y-2">
+                                    <label class="block text-[10px] font-mono text-slate-500 uppercase tracking-widest">Target Profile (For Analysis)</label>
+                                    <div class="relative group/file cursor-pointer">
+                                        <input type="file" name="reference_image" id="reference_image" class="hidden" accept="image/*">
+                                        <div onclick="document.getElementById('reference_image').click()" class="border-2 border-dashed border-slate-700 hover:border-sky-500 bg-slate-900/30 rounded-xl p-4 transition-all text-center">
+                                            <p id="file-name" class="text-[10px] text-slate-400 font-mono">Click to upload target image</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="flex items-end gap-2">
+                                    <button type="button" onclick="startStream()" class="flex-grow py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold uppercase tracking-widest rounded-xl transition-all text-xs border border-slate-700">
+                                        View Stream
+                                    </button>
+                                    <button type="submit" class="flex-grow py-3 bg-sky-500 hover:bg-sky-400 text-slate-950 font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-sky-500/20 text-xs">
+                                        Analyze Last 19s
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
                 </div>
 
                 <!-- Video Feed Card -->
@@ -122,6 +142,14 @@
     <script>
         lucide.createIcons();
         let alertSource = null;
+
+        document.getElementById('reference_image').addEventListener('change', function(e) {
+            if (e.target.files[0]) {
+                document.getElementById('file-name').textContent = e.target.files[0].name;
+                document.getElementById('file-name').classList.remove('text-slate-400');
+                document.getElementById('file-name').classList.add('text-sky-400');
+            }
+        });
 
         function startStream() {
             const url = document.getElementById('rtsp-url').value;

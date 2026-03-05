@@ -3,6 +3,7 @@ import numpy as np
 import os
 import tempfile
 import shutil
+import time
 from tracker import CentroidTracker
 import similarity
 from decision_engine import DecisionEngine
@@ -12,7 +13,140 @@ import base64
 from ultralytics import YOLO
 from concurrent.futures import ThreadPoolExecutor
 
-def process_video(video_path, reference_image_path, progress_queue):
+def capture_rtsp_segment(rtsp_url, duration=10):
+    """Captures a segment of RTSP stream and saves it to a temporary file."""
+    temp_video = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+    temp_path = temp_video.name
+    temp_video.close()
+
+    print(f"--- Capturing {duration}s from {rtsp_url} ---")
+    cap = cv2.VideoCapture(rtsp_url)
+    if not cap.isOpened():
+        return None
+
+    # Get stream properties
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    if fps <= 0: fps = 20.0
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(temp_path, fourcc, fps, (width, height))
+
+    start_time = time.time()
+    frames_captured = 0
+    while (time.time() - start_time) < duration:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        out.write(frame)
+        frames_captured += 1
+
+    cap.release()
+    out.release()
+    print(f"--- Captured {frames_captured} frames to {temp_path} ---")
+    return temp_path
+
+def capture_usb_segment(camera_index=0, duration=10):
+    """Captures a segment from USB camera or DroidCam MJPEG stream."""
+    temp_video = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+    temp_path = temp_video.name
+    temp_video.close()
+
+    # Normalize source
+    if isinstance(camera_index, str) and ('.' in camera_index or ':' in camera_index):
+        if not camera_index.startswith('http'):
+            source = f"http://{camera_index}"
+        else:
+            source = camera_index
+        
+        if not ('/video' in source or '/mjpegfeed' in source):
+            source = f"{source.rstrip('/')}/video"
+    else:
+        try: source = int(camera_index)
+        except: source = camera_index
+
+    print(f"--- Capturing {duration}s from Source {source} ---")
+    if isinstance(source, int):
+        cap = cv2.VideoCapture(source, cv2.CAP_DSHOW)
+    else:
+        # For DroidCam MJPEG, sometimes FFMPEG backend is slower to init, try default first then FFMPEG
+        cap = cv2.VideoCapture(source)
+        if not cap.isOpened():
+             cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
+
+    if not cap.isOpened():
+        # Fallback for DroidCam MJPEG if /video endpoint fails
+        if isinstance(source, str) and '/video' in source:
+            alt_source = source.replace('/video', '/mjpegfeed')
+            print(f"--- Retrying capture with alternate DroidCam endpoint: {alt_source} ---")
+            cap = cv2.VideoCapture(alt_source)
+            if not cap.isOpened():
+                cap = cv2.VideoCapture(alt_source, cv2.CAP_FFMPEG)
+            
+            if not cap.isOpened():
+                # Try just the IP:Port
+                base_url = source.split('/video')[0]
+                print(f"--- Final retry capture with base URL: {base_url} ---")
+                cap = cv2.VideoCapture(base_url)
+                if not cap.isOpened():
+                    print(f"--- Error: All capture attempts failed for {source} ---")
+                    return None
+            source = alt_source
+        else:
+            print(f"--- Error: Could not open source {source} for capture ---")
+            return None
+
+    # Increase timeout for network streams
+    if isinstance(source, str) and source.startswith('http'):
+        cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000)
+
+    # Only set resolution for hardware cameras
+    if isinstance(source, int):
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+
+    fps = 20.0
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    if width <= 0 or height <= 0:
+        width, height = 640, 480
+
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(temp_path, fourcc, fps, (width, height))
+
+    start_time = time.time()
+    frames_captured = 0
+    while (time.time() - start_time) < duration:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        out.write(frame)
+        frames_captured += 1
+
+    cap.release()
+    out.release()
+    print(f"--- Captured {frames_captured} frames to {temp_path} ---")
+    return temp_path
+
+def process_video(video_path, reference_image_path, progress_queue, is_rtsp=False, is_usb=False):
+    # Handle different source types
+    actual_video_path = video_path
+    if is_rtsp:
+        progress_queue.put({'progress': 5, 'status': 'Capturing live stream (10s)...'})
+        captured_path = capture_rtsp_segment(video_path)
+        if not captured_path:
+            progress_queue.put({'error': 'Failed to connect to RTSP stream.'})
+            return
+        actual_video_path = captured_path
+    elif is_usb:
+        progress_queue.put({'progress': 5, 'status': 'Capturing USB feed (10s)...'})
+        captured_path = capture_usb_segment(video_path) # video_path is camera index here
+        if not captured_path:
+            progress_queue.put({'error': 'Failed to access USB Camera.'})
+            return
+        actual_video_path = captured_path
+
     print("--- Starting video processing with SAHI and InsightFace (Buffalo_L) ---")
     
     # Initialize SAHI Detection Model (YOLOv8 for person detection)
@@ -27,13 +161,20 @@ def process_video(video_path, reference_image_path, progress_queue):
     # Threshold 0.5 as requested for ArcFace
     engine = DecisionEngine(face_threshold=0.5)
     
-    reference_cv2_image = cv2.imread(reference_image_path)
-    # Extract 512-dim embedding from reference image
-    ref_embedding = similarity.get_face_embedding(reference_cv2_image)
+    cap = cv2.VideoCapture(actual_video_path)
+    if not cap.isOpened():
+        progress_queue.put({'error': 'Could not open video source.'})
+        return
     
+    # Pre-calculate reference embedding once
+    reference_cv2_image = cv2.imread(reference_image_path)
+    if reference_cv2_image is None:
+        progress_queue.put({'error': 'Could not read reference image.'})
+        return
+
+    ref_embedding = similarity.get_face_embedding(reference_cv2_image)
     if ref_embedding is None:
-        print("Error: Could not extract embedding from reference image.")
-        progress_queue.put({'error': 'Reference face not detected. Please use a clearer profile picture.'})
+        progress_queue.put({'error': 'Reference face not detected in uploaded image.'})
         return
 
     # Resize image to speed up color analysis
@@ -41,16 +182,10 @@ def process_video(video_path, reference_image_path, progress_queue):
     print("Analyzing reference image colors...")
     reference_color = similarity.get_dominant_color(resized_ref_image)
     print("Reference image analysis complete.")
-    # layer_names and output_layers are obsolete for YOLOv8
-    # output_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers()]
 
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        progress_queue.put({'error': 'Could not open video.'})
-        return
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    video_filename = os.path.basename(video_path)
+    video_filename = os.path.basename(actual_video_path) if not is_rtsp else "rtsp_capture.mp4"
     # Create a temporary file for the output video
     temp_file = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
     temp_filename = temp_file.name
